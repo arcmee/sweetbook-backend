@@ -24,6 +24,7 @@ export interface CreateEventInput {
   groupId: string;
   title: string;
   occurredAt?: Date;
+  actorId: string;
 }
 
 export interface CreatePhotoInput {
@@ -32,6 +33,7 @@ export interface CreatePhotoInput {
   uploadedByUserId: string;
   filename: string;
   createdAt?: Date;
+  actorId: string;
 }
 
 export interface AddLikeInput {
@@ -68,6 +70,9 @@ export function createGroupEventPhotoLikeWorkflow(
       if (!group) {
         throw new WorkflowError("group not found");
       }
+      if (input.actorId !== group.ownerId) {
+        throw new WorkflowError("actor is not allowed to create an event for this group");
+      }
 
       const event = createEvent(input);
       await dependencies.eventRepository.save(event);
@@ -77,6 +82,9 @@ export function createGroupEventPhotoLikeWorkflow(
       const event = await dependencies.eventRepository.findById(input.eventId);
       if (!event) {
         throw new WorkflowError("event not found");
+      }
+      if (input.actorId !== input.uploadedByUserId) {
+        throw new WorkflowError("actor is not allowed to upload this photo");
       }
 
       const photo = createPhoto(input);
@@ -89,15 +97,12 @@ export function createGroupEventPhotoLikeWorkflow(
         throw new WorkflowError("photo not found");
       }
 
-      const alreadyLiked = await dependencies.photoLikeRepository.hasUserLikedPhoto(
+      const result = await dependencies.photoLikeRepository.addLikeIfAbsent(
         input.photoId,
         input.userId
       );
-      if (!alreadyLiked) {
-        await dependencies.photoLikeRepository.recordLike(input.photoId, input.userId);
-      }
 
-      return dependencies.photoLikeRepository.countByPhotoId(input.photoId);
+      return result.count;
     },
     async getLikeCount(photoId) {
       return dependencies.photoLikeRepository.countByPhotoId(photoId);
