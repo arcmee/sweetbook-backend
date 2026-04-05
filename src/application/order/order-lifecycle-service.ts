@@ -60,6 +60,9 @@ export function createOrderLifecycleService(dependencies: OrderLifecycleDependen
       if (statusRank[input.status] < statusRank[existing.status]) {
         return existing;
       }
+      if (isTerminal(existing.status) && input.status !== existing.status) {
+        return existing;
+      }
 
       const updated: OrderRecord = {
         ...existing,
@@ -72,4 +75,8 @@ export function createOrderLifecycleService(dependencies: OrderLifecycleDependen
       return updated;
     }
   };
+}
+
+function isTerminal(status: OrderStatus): boolean {
+  return status === "completed" || status === "cancelled";
 }
