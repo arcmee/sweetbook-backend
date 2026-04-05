@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/presentation/server.ts",
+    "sweetbook:smoke": "tsx src/presentation/sweetbook-sandbox-smoke.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
