@@ -61,6 +61,22 @@ describe("T6 order lifecycle and webhook handling", () => {
     });
 
     expect(semanticallyStale.status).toBe("confirmed");
+
+    const completed = await service.applyRemoteUpdate({
+      orderId: "order-1",
+      status: "completed",
+      updatedAt: new Date("2026-02-01T10:02:00.000Z")
+    });
+
+    expect(completed.status).toBe("completed");
+
+    const terminalFlip = await service.applyRemoteUpdate({
+      orderId: "order-1",
+      status: "cancelled",
+      updatedAt: new Date("2026-02-01T10:03:00.000Z")
+    });
+
+    expect(terminalFlip.status).toBe("completed");
   });
 
   it("processes the same webhook event twice without duplicating state changes", async () => {
@@ -76,7 +92,7 @@ describe("T6 order lifecycle and webhook handling", () => {
         orderId: "order-1",
         status: "confirmed",
         occurredAt: new Date("2026-02-01T09:59:00.000Z"),
-        verified: false
+        signature: "invalid"
       } as never)
     ).rejects.toThrow();
 
@@ -86,7 +102,7 @@ describe("T6 order lifecycle and webhook handling", () => {
         orderId: "order-1",
         status: "confirmed",
         occurredAt: new Date("2026-02-01T10:00:00.000Z"),
-        verified: true
+        signature: "valid"
       } as never)
     ).rejects.toThrow();
 
@@ -105,7 +121,7 @@ describe("T6 order lifecycle and webhook handling", () => {
       orderId: "order-1",
       status: "confirmed",
       occurredAt: new Date("2026-02-01T10:00:00.000Z"),
-      verified: true
+      signature: "valid"
     });
 
     const second = await seededProcessor.handleWebhook({
@@ -113,7 +129,7 @@ describe("T6 order lifecycle and webhook handling", () => {
       orderId: "order-1",
       status: "confirmed",
       occurredAt: new Date("2026-02-01T10:00:00.000Z"),
-      verified: true
+      signature: "valid"
     });
 
     expect(second.duplicate).toBe(true);
@@ -125,6 +141,27 @@ describe("T6 order lifecycle and webhook handling", () => {
 function createInMemoryOrderDependencies() {
   return {
     orders: new Map<string, { orderId: string; quoteId: string; finalizationId: string; status: string; version: number; updatedAt?: Date }>(),
-    processedEvents: new Set<string>()
+    processedEventStore: new InMemoryProcessedWebhookEventStore(),
+    webhookVerifier: new InMemoryWebhookVerifier()
   };
+}
+
+class InMemoryProcessedWebhookEventStore {
+  private readonly eventIds = new Set<string>();
+
+  async has(eventId: string): Promise<boolean> {
+    return this.eventIds.has(eventId);
+  }
+
+  async markProcessed(eventId: string): Promise<void> {
+    this.eventIds.add(eventId);
+  }
+}
+
+class InMemoryWebhookVerifier {
+  async verify(input: { signature?: string }): Promise<void> {
+    if (input.signature !== "valid") {
+      throw new Error("webhook not verified");
+    }
+  }
 }

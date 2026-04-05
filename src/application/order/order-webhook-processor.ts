@@ -4,17 +4,20 @@ import {
   type OrderRecord,
   type OrderStatus
 } from "./order-lifecycle-service";
+import type { ProcessedWebhookEventStore } from "./processed-webhook-event-store";
+import type { WebhookVerifier } from "./webhook-verifier";
 
 export interface WebhookEventInput {
   eventId: string;
   orderId: string;
   status: OrderStatus;
   occurredAt: Date;
-  verified: boolean;
+  signature?: string;
 }
 
 export interface OrderWebhookDependencies extends OrderLifecycleDependencies {
-  processedEvents: Set<string>;
+  processedEventStore: ProcessedWebhookEventStore;
+  webhookVerifier: WebhookVerifier;
 }
 
 export interface WebhookProcessingResult {
@@ -27,13 +30,11 @@ export function createOrderWebhookProcessor(dependencies: OrderWebhookDependenci
 
   return {
     async handleWebhook(input: WebhookEventInput): Promise<WebhookProcessingResult> {
-      if (!input.verified) {
-        throw new Error("webhook not verified");
-      }
+      await dependencies.webhookVerifier.verify(input);
 
       const existing = dependencies.orders.get(input.orderId);
 
-      if (dependencies.processedEvents.has(input.eventId)) {
+      if (await dependencies.processedEventStore.has(input.eventId)) {
         if (!existing) {
           throw new Error("order not found");
         }
@@ -55,7 +56,7 @@ export function createOrderWebhookProcessor(dependencies: OrderWebhookDependenci
         updatedAt: input.occurredAt
       });
 
-      dependencies.processedEvents.add(input.eventId);
+      await dependencies.processedEventStore.markProcessed(input.eventId);
 
       return {
         duplicate: false,
