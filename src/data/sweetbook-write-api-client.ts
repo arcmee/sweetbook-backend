@@ -5,9 +5,15 @@ import type {
   SubmitSweetBookOrderInput,
   SweetBookBookCreationResult,
   SweetBookClient,
+  SweetBookContentsUploadResult,
+  SweetBookCoverUploadResult,
   SweetBookFinalizeResult,
   SweetBookOrderEstimateResult,
   SweetBookOrderResult,
+  SweetBookPhotoUploadResult,
+  UploadSweetBookContentsInput,
+  UploadSweetBookCoverInput,
+  UploadSweetBookPhotoInput,
 } from "../application/ports/sweetbook-client";
 import type { SweetBookApiConfig } from "./sweetbook-api-config";
 
@@ -65,6 +71,84 @@ export function createSweetBookWriteApiClient(
       ).then((payload) => payload.data);
     },
 
+    async uploadCover(
+      input: UploadSweetBookCoverInput,
+    ): Promise<SweetBookCoverUploadResult> {
+      const formData = new FormData();
+
+      formData.set("templateUid", input.templateUid);
+      formData.set("parameters", JSON.stringify(input.parameters));
+      formData.set(
+        "frontPhoto",
+        new File([input.frontPhoto.bytes], input.frontPhoto.fileName, {
+          type: input.frontPhoto.contentType,
+        }),
+      );
+
+      if (input.backPhoto) {
+        formData.set(
+          "backPhoto",
+          new File([input.backPhoto.bytes], input.backPhoto.fileName, {
+            type: input.backPhoto.contentType,
+          }),
+        );
+      }
+
+      return multipartRequest<Envelope<SweetBookCoverUploadResult>>(
+        config,
+        `/books/${input.bookUid}/cover`,
+        formData,
+        fetchImpl,
+      ).then((payload) => payload.data);
+    },
+
+    async uploadPhoto(
+      input: UploadSweetBookPhotoInput,
+    ): Promise<SweetBookPhotoUploadResult> {
+      const formData = new FormData();
+
+      formData.set(
+        "file",
+        new File([input.file.bytes], input.file.fileName, {
+          type: input.file.contentType,
+        }),
+      );
+
+      return multipartRequest<Envelope<SweetBookPhotoUploadResult>>(
+        config,
+        `/books/${input.bookUid}/photos`,
+        formData,
+        fetchImpl,
+      ).then((payload) => payload.data);
+    },
+
+    async uploadContents(
+      input: UploadSweetBookContentsInput,
+    ): Promise<SweetBookContentsUploadResult> {
+      const formData = new FormData();
+
+      formData.set("templateUid", input.templateUid);
+      formData.set("parameters", JSON.stringify(input.parameters));
+
+      for (const [fieldName, part] of Object.entries(input.fileParts ?? {})) {
+        formData.set(
+          fieldName,
+          new File([part.bytes], part.fileName, {
+            type: part.contentType,
+          }),
+        );
+      }
+
+      const query = input.breakBefore ? `?breakBefore=${input.breakBefore}` : "";
+
+      return multipartRequest<Envelope<SweetBookContentsUploadResult>>(
+        config,
+        `/books/${input.bookUid}/contents${query}`,
+        formData,
+        fetchImpl,
+      ).then((payload) => payload.data);
+    },
+
     async submitOrder(
       input: SubmitSweetBookOrderInput,
     ): Promise<SweetBookOrderResult> {
@@ -103,6 +187,35 @@ async function request<T>(
     method: "POST",
     headers,
     body: JSON.stringify(stripUndefined(body)),
+  });
+
+  if (!response.ok) {
+    throw new Error(`SweetBook request failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as Envelope<unknown>;
+
+  if (!payload.success) {
+    const detail = payload.errors?.join(", ");
+    throw new Error(detail ? `${payload.message}: ${detail}` : payload.message);
+  }
+
+  return payload as T;
+}
+
+async function multipartRequest<T>(
+  config: SweetBookApiConfig,
+  path: string,
+  body: FormData,
+  fetchImpl: typeof fetch,
+): Promise<T> {
+  const response = await fetchImpl(`${config.baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      Accept: "application/json",
+    },
+    body,
   });
 
   if (!response.ok) {

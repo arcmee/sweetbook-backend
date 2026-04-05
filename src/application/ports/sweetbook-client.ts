@@ -46,6 +46,58 @@ export interface SweetBookOrderResult {
 }
 export const SweetBookOrderResult = Symbol("SweetBookOrderResult");
 
+export interface SweetBookFilePart {
+  fileName: string;
+  contentType: string;
+  bytes: Blob;
+}
+
+export interface UploadSweetBookCoverInput {
+  bookUid: string;
+  templateUid: string;
+  parameters: Record<string, unknown>;
+  frontPhoto: SweetBookFilePart;
+  backPhoto?: SweetBookFilePart;
+}
+
+export interface SweetBookCoverUploadResult {
+  result: string;
+}
+export const SweetBookCoverUploadResult = Symbol("SweetBookCoverUploadResult");
+
+export interface UploadSweetBookPhotoInput {
+  bookUid: string;
+  file: SweetBookFilePart;
+}
+
+export interface SweetBookPhotoUploadResult {
+  fileName: string;
+  originalName: string;
+  size: number;
+  mimeType: string;
+  uploadedAt: string;
+  isDuplicate: boolean;
+  hash: string;
+}
+export const SweetBookPhotoUploadResult = Symbol("SweetBookPhotoUploadResult");
+
+export interface UploadSweetBookContentsInput {
+  bookUid: string;
+  templateUid: string;
+  breakBefore?: "page" | "column" | "none";
+  parameters: Record<string, unknown>;
+  fileParts?: Record<string, SweetBookFilePart>;
+}
+
+export interface SweetBookContentsUploadResult {
+  result: string;
+  breakBefore: string;
+  pageNum: number;
+  pageSide: string;
+  pageCount: number;
+}
+export const SweetBookContentsUploadResult = Symbol("SweetBookContentsUploadResult");
+
 export interface SweetBookClient {
   createBook(
     input: CreateSweetBookBookInput,
@@ -56,6 +108,15 @@ export interface SweetBookClient {
   estimateOrder(
     input: EstimateSweetBookOrderInput,
   ): Promise<SweetBookOrderEstimateResult>;
+  uploadCover(
+    input: UploadSweetBookCoverInput,
+  ): Promise<SweetBookCoverUploadResult>;
+  uploadPhoto(
+    input: UploadSweetBookPhotoInput,
+  ): Promise<SweetBookPhotoUploadResult>;
+  uploadContents(
+    input: UploadSweetBookContentsInput,
+  ): Promise<SweetBookContentsUploadResult>;
   submitOrder(
     input: SubmitSweetBookOrderInput,
   ): Promise<SweetBookOrderResult>;
