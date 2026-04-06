@@ -28,8 +28,7 @@ describe("prototype workspace postgres store", () => {
   });
 
   it("loads the workspace snapshot from postgres rows", async () => {
-    const query = vi
-      .fn()
+    const query = vi.fn()
       .mockResolvedValueOnce({
         rows: [
           {
@@ -73,41 +72,17 @@ describe("prototype workspace postgres store", () => {
             like_count: "12",
             liked_by_viewer: true,
           },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
           {
             active_event_id: "event-birthday",
             active_event_name: "First birthday album",
-            photo_id: "photo-cake",
-            caption: "Cake table setup",
-            rank: "1",
-            like_count: "12",
-            why_selected:
-              "Selected because this photo combines strong likes with a clear milestone moment.",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            active_event_id: "event-birthday",
-            page_number: "1",
-            title: "Cover preview",
-            photo_caption: "Cake table setup",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            active_event_id: "event-birthday",
-            active_event_name: "First birthday album",
-            selected_candidate_count: "3",
-            book_format: "Hardcover square",
-            note: "Review this summary before backend submission is wired.",
-            payload_section: "selected photos",
+            pending_count: "3",
+            uploaded_count: "124",
+            helper_text: "Upload queue is local-only until backend adapters land.",
+            photo_id: "photo-family",
+            caption: "Family portrait",
+            uploaded_by: "Joon",
+            like_count: "9",
+            liked_by_viewer: false,
           },
         ],
       });
@@ -126,6 +101,15 @@ describe("prototype workspace postgres store", () => {
       photoCount: 124,
     });
     expect(snapshot.photoWorkflows[0]?.activeEventId).toBe("event-birthday");
+    expect(snapshot.candidateReviews[0]?.candidates[0]).toMatchObject({
+      photoId: "photo-cake",
+      rank: 1,
+      likeCount: 12,
+    });
+    expect(snapshot.orderEntries[0]).toMatchObject({
+      activeEventId: "event-birthday",
+      selectedCandidateCount: 2,
+    });
   });
 
   it("creates a photo and records a viewer like through postgres updates", async () => {

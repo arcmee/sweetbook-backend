@@ -428,53 +428,6 @@ export function createPrototypeWorkspaceSnapshotLoader(
       `,
     );
 
-    const candidateRows = await pool.query<CandidateRow>(
-      `
-        SELECT
-          c.event_id AS active_event_id,
-          e.title AS active_event_name,
-          c.photo_id,
-          c.caption,
-          c.rank::text,
-          c.like_count::text,
-          c.why_selected
-        FROM prototype_candidate_reviews c
-        INNER JOIN prototype_events e
-          ON e.id = c.event_id
-        ORDER BY e.occurred_at ASC, c.rank ASC
-      `,
-    );
-
-    const pagePreviewRows = await pool.query<PagePreviewRow>(
-      `
-        SELECT
-          event_id AS active_event_id,
-          page_number::text,
-          title,
-          photo_caption
-        FROM prototype_page_previews
-        ORDER BY event_id ASC, page_number ASC, caption_order ASC
-      `,
-    );
-
-    const orderEntryRows = await pool.query<OrderEntryRow>(
-      `
-        SELECT
-          o.event_id AS active_event_id,
-          e.title AS active_event_name,
-          o.selected_candidate_count::text,
-          o.book_format,
-          o.note,
-          s.section_name AS payload_section
-        FROM prototype_order_entries o
-        INNER JOIN prototype_events e
-          ON e.id = o.event_id
-        LEFT JOIN prototype_order_entry_sections s
-          ON s.event_id = o.event_id
-        ORDER BY e.occurred_at ASC, s.section_order ASC
-      `,
-    );
-
     const groups: GroupCardSnapshot[] = groupsResult.rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -529,72 +482,15 @@ export function createPrototypeWorkspaceSnapshotLoader(
       }
     }
 
-    const candidateReviewMap = new Map<string, CandidateReviewSnapshot>();
-    for (const row of candidateRows.rows) {
-      const existing = candidateReviewMap.get(row.active_event_id);
-      const candidate: CandidateCardSnapshot = {
-        photoId: row.photo_id,
-        caption: row.caption,
-        rank: Number.parseInt(row.rank, 10),
-        likeCount: Number.parseInt(row.like_count, 10),
-        whySelected: row.why_selected,
-      };
-
-      if (!existing) {
-        candidateReviewMap.set(row.active_event_id, {
-          activeEventId: row.active_event_id,
-          activeEventName: row.active_event_name,
-          candidates: [candidate],
-          pagePreview: [],
-        });
-        continue;
-      }
-
-      existing.candidates.push(candidate);
-    }
-
-    for (const row of pagePreviewRows.rows) {
-      const review = candidateReviewMap.get(row.active_event_id);
-      if (!review) {
-        continue;
-      }
-
-      const pageNumber = Number.parseInt(row.page_number, 10);
-      const existingPage = review.pagePreview.find((page) => page.pageNumber === pageNumber);
-      if (!existingPage) {
-        const page: PagePreviewSnapshot = {
-          pageNumber,
-          title: row.title,
-          photoCaptions: [row.photo_caption],
-        };
-        review.pagePreview.push(page);
-        continue;
-      }
-
-      existingPage.photoCaptions.push(row.photo_caption);
-    }
-
-    const orderEntryMap = new Map<string, OrderEntrySnapshot>();
-    for (const row of orderEntryRows.rows) {
-      const existing = orderEntryMap.get(row.active_event_id);
-      if (!existing) {
-        orderEntryMap.set(row.active_event_id, {
-          activeEventId: row.active_event_id,
-          activeEventName: row.active_event_name,
-          selectedCandidateCount: Number.parseInt(row.selected_candidate_count, 10),
-          handoffSummary: {
-            bookFormat: row.book_format,
-            payloadSections: row.payload_section ? [row.payload_section] : [],
-            note: row.note,
-          },
-        });
-        continue;
-      }
-
-      if (row.payload_section) {
-        existing.handoffSummary.payloadSections.push(row.payload_section);
-      }
-    }
+    const candidateReviews = events.map((event) =>
+      buildCandidateReviewSnapshot(
+        event,
+        photoWorkflowMap.get(event.id)?.photos ?? [],
+      ),
+    );
+    const orderEntries = candidateReviews.map((review) =>
+      buildOrderEntrySnapshot(review),
+    );
 
     return {
       ...buildPrototypeWorkspaceSnapshot({
@@ -609,8 +505,8 @@ export function createPrototypeWorkspaceSnapshotLoader(
         events,
       }),
       photoWorkflows: [...photoWorkflowMap.values()],
-      candidateReviews: [...candidateReviewMap.values()],
-      orderEntries: [...orderEntryMap.values()],
+      candidateReviews,
+      orderEntries,
     };
   };
 }
@@ -788,4 +684,88 @@ export function createPrototypePhotoLikeAdder(
       [photoId, userId, PROTOTYPE_VIEWER_ID],
     );
   };
+}
+
+function buildCandidateReviewSnapshot(
+  event: EventCardSnapshot,
+  photos: PhotoCardSnapshot[],
+): CandidateReviewSnapshot {
+  const selectedPhotos = [...photos]
+    .sort((left, right) => {
+      if (right.likeCount !== left.likeCount) {
+        return right.likeCount - left.likeCount;
+      }
+
+      if (left.likedByViewer !== right.likedByViewer) {
+        return Number(right.likedByViewer) - Number(left.likedByViewer);
+      }
+
+      return left.caption.localeCompare(right.caption);
+    })
+    .slice(0, 3);
+
+  const candidates: CandidateCardSnapshot[] = selectedPhotos.map((photo, index) => ({
+    photoId: photo.id,
+    caption: photo.caption,
+    rank: index + 1,
+    likeCount: photo.likeCount,
+    whySelected: buildSelectionReason(photo, index + 1),
+  }));
+
+  const pagePreview: PagePreviewSnapshot[] = [];
+  if (selectedPhotos[0]) {
+    pagePreview.push({
+      pageNumber: 1,
+      title: "Cover preview",
+      photoCaptions: [selectedPhotos[0].caption],
+    });
+  }
+
+  if (selectedPhotos[1] || selectedPhotos[2]) {
+    pagePreview.push({
+      pageNumber: 2,
+      title: "Story spread",
+      photoCaptions: selectedPhotos.slice(1, 3).map((photo) => photo.caption),
+    });
+  }
+
+  return {
+    activeEventId: event.id,
+    activeEventName: event.name,
+    candidates,
+    pagePreview,
+  };
+}
+
+function buildOrderEntrySnapshot(review: CandidateReviewSnapshot): OrderEntrySnapshot {
+  const payloadSections =
+    review.candidates.length > 0
+      ? ["selected photos", "page preview", "event title"]
+      : ["event title"];
+
+  return {
+    activeEventId: review.activeEventId,
+    activeEventName: review.activeEventName,
+    selectedCandidateCount: review.candidates.length,
+    handoffSummary: {
+      bookFormat: "Hardcover square",
+      payloadSections,
+      note:
+        review.candidates.length > 0
+          ? "Review this summary before backend submission is wired."
+          : "Add more liked photos to prepare a stronger SweetBook handoff.",
+    },
+  };
+}
+
+function buildSelectionReason(photo: PhotoCardSnapshot, rank: number): string {
+  if (rank === 1) {
+    return `Selected because ${photo.caption} is leading with ${photo.likeCount} likes.`;
+  }
+
+  if (photo.likedByViewer) {
+    return `Selected because ${photo.caption} has strong engagement and includes your like.`;
+  }
+
+  return `Selected because ${photo.caption} remains one of the strongest liked moments in this event.`;
 }
