@@ -14,7 +14,29 @@ import type {
 
 export interface BuildAppOptions {
   prototypeAuthSessionStore?: PrototypeAuthSessionStore;
-  prototypeEventCreator?: (input: { groupId: string; title: string }) => Promise<void>;
+  prototypeGroupInviteCreator?: (input: { groupId: string; userId: string }) => Promise<void>;
+  prototypeGroupInvitationAcceptor?: (input: { invitationId: string; userId: string }) => Promise<void>;
+  prototypeGroupInvitationDecliner?: (input: { invitationId: string; userId: string }) => Promise<void>;
+  prototypeGroupLeaveAction?: (input: { groupId: string; userId: string }) => Promise<void>;
+  prototypeOwnerTransfer?: (input: {
+    groupId: string;
+    nextOwnerUserId: string;
+  }) => Promise<void>;
+  prototypeUserSearch?: (input: {
+    query: string;
+  }) => Promise<Array<{ userId: string; username: string; displayName: string }>>;
+  prototypeEventCreator?: (input: {
+    groupId: string;
+    title: string;
+    description: string;
+    votingStartsAt: string;
+    votingEndsAt: string;
+  }) => Promise<void>;
+  prototypeEventVotingCloser?: (input: { eventId: string }) => Promise<void>;
+  prototypeEventVotingExtender?: (input: {
+    eventId: string;
+    votingEndsAt: string;
+  }) => Promise<void>;
   prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
   prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
   prototypePhotoUploader?: (input: {
@@ -98,12 +120,51 @@ export async function buildApp(
     return reply.code(204).send();
   });
 
+  app.post("/api/prototype/account/password", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      currentPassword?: string;
+      nextPassword?: string;
+    };
+
+    if ((body.currentPassword ?? "") !== "sweetbook123!") {
+      return reply.code(400).send({
+        message: "Current prototype password is incorrect",
+      });
+    }
+
+    if ((body.nextPassword ?? "").trim().length < 8) {
+      return reply.code(400).send({
+        message: "Next prototype password must be at least 8 characters",
+      });
+    }
+
+    return reply.code(204).send();
+  });
+
   app.get("/api/prototype/workspace", async () => {
     if (options.prototypeWorkspaceSnapshotLoader) {
       return options.prototypeWorkspaceSnapshotLoader();
     }
 
     return getPrototypeWorkspaceSnapshot();
+  });
+
+  app.get("/api/prototype/users/search", async (request, reply) => {
+    if (!options.prototypeUserSearch) {
+      return reply.code(503).send({
+        message: "Prototype user search is not configured",
+      });
+    }
+
+    const query = request.query as {
+      q?: string;
+    };
+
+    return reply.code(200).send(
+      await options.prototypeUserSearch({
+        query: query.q ?? "",
+      }),
+    );
   });
 
   app.post("/api/prototype/groups", async (request, reply) => {
@@ -139,14 +200,185 @@ export async function buildApp(
     const body = (request.body ?? {}) as {
       groupId?: string;
       title?: string;
+      description?: string;
+      votingStartsAt?: string;
+      votingEndsAt?: string;
     };
 
     try {
       await options.prototypeEventCreator({
         groupId: body.groupId ?? "",
         title: body.title ?? "",
+        description: body.description ?? "",
+        votingStartsAt: body.votingStartsAt ?? "",
+        votingEndsAt: body.votingEndsAt ?? "",
       });
       return reply.code(201).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/groups/:groupId/invitations", async (request, reply) => {
+    if (!options.prototypeGroupInviteCreator) {
+      return reply.code(503).send({
+        message: "Prototype group invite creator is not configured",
+      });
+    }
+
+    const params = request.params as { groupId?: string };
+    const body = (request.body ?? {}) as { userId?: string };
+
+    try {
+      await options.prototypeGroupInviteCreator({
+        groupId: params.groupId ?? "",
+        userId: body.userId ?? "",
+      });
+      return reply.code(201).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/invitations/:invitationId/accept", async (request, reply) => {
+    if (!options.prototypeGroupInvitationAcceptor) {
+      return reply.code(503).send({
+        message: "Prototype invitation acceptor is not configured",
+      });
+    }
+
+    const params = request.params as { invitationId?: string };
+    const body = (request.body ?? {}) as { userId?: string };
+
+    try {
+      await options.prototypeGroupInvitationAcceptor({
+        invitationId: params.invitationId ?? "",
+        userId: body.userId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/invitations/:invitationId/decline", async (request, reply) => {
+    if (!options.prototypeGroupInvitationDecliner) {
+      return reply.code(503).send({
+        message: "Prototype invitation decliner is not configured",
+      });
+    }
+
+    const params = request.params as { invitationId?: string };
+    const body = (request.body ?? {}) as { userId?: string };
+
+    try {
+      await options.prototypeGroupInvitationDecliner({
+        invitationId: params.invitationId ?? "",
+        userId: body.userId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/groups/:groupId/owner", async (request, reply) => {
+    if (!options.prototypeOwnerTransfer) {
+      return reply.code(503).send({
+        message: "Prototype owner transfer is not configured",
+      });
+    }
+
+    const params = request.params as { groupId?: string };
+    const body = (request.body ?? {}) as { nextOwnerUserId?: string };
+
+    try {
+      await options.prototypeOwnerTransfer({
+        groupId: params.groupId ?? "",
+        nextOwnerUserId: body.nextOwnerUserId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/groups/:groupId/leave", async (request, reply) => {
+    if (!options.prototypeGroupLeaveAction) {
+      return reply.code(503).send({
+        message: "Prototype leave action is not configured",
+      });
+    }
+
+    const params = request.params as { groupId?: string };
+    const body = (request.body ?? {}) as { userId?: string };
+
+    try {
+      await options.prototypeGroupLeaveAction({
+        groupId: params.groupId ?? "",
+        userId: body.userId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/close-voting", async (request, reply) => {
+    if (!options.prototypeEventVotingCloser) {
+      return reply.code(503).send({
+        message: "Prototype event voting closer is not configured",
+      });
+    }
+
+    const params = request.params as {
+      eventId?: string;
+    };
+
+    try {
+      await options.prototypeEventVotingCloser({
+        eventId: params.eventId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/extend-voting", async (request, reply) => {
+    if (!options.prototypeEventVotingExtender) {
+      return reply.code(503).send({
+        message: "Prototype event voting extender is not configured",
+      });
+    }
+
+    const params = request.params as {
+      eventId?: string;
+    };
+    const body = (request.body ?? {}) as {
+      votingEndsAt?: string;
+    };
+
+    try {
+      await options.prototypeEventVotingExtender({
+        eventId: params.eventId ?? "",
+        votingEndsAt: body.votingEndsAt ?? "",
+      });
+      return reply.code(200).send();
     } catch (error: unknown) {
       return reply.code(400).send({
         message: error instanceof Error ? error.message : String(error),

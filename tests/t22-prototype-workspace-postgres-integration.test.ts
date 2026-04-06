@@ -22,6 +22,7 @@ describe("prototype workspace postgres integration", () => {
     await pool.query("DELETE FROM prototype_photos");
     await pool.query("DELETE FROM prototype_photo_workflows");
     await pool.query("DELETE FROM prototype_events");
+    await pool.query("DELETE FROM prototype_group_invitations");
     await pool.query("DELETE FROM prototype_group_memberships");
     await pool.query("DELETE FROM prototype_groups");
     await seedPrototypeWorkspaceStore(pool);
@@ -32,6 +33,7 @@ describe("prototype workspace postgres integration", () => {
     await pool.query("DELETE FROM prototype_photos");
     await pool.query("DELETE FROM prototype_photo_workflows");
     await pool.query("DELETE FROM prototype_events");
+    await pool.query("DELETE FROM prototype_group_invitations");
     await pool.query("DELETE FROM prototype_group_memberships");
     await pool.query("DELETE FROM prototype_groups");
     await pool.end();
@@ -50,10 +52,11 @@ describe("prototype workspace postgres integration", () => {
     expect(response.statusCode).toBe(200);
 
     const payload = response.json();
-    expect(payload.workspace.groupSummary.totalGroups).toBe(2);
-    expect(payload.workspace.groupSummary.totalMembers).toBe(7);
+    expect(payload.workspace.groupSummary.totalGroups).toBe(3);
+    expect(payload.workspace.groupSummary.totalMembers).toBe(8);
     expect(payload.workspace.groups[0]?.name).toBe("Han family");
     expect(payload.workspace.events[0]?.name).toBe("First birthday album");
+    expect(payload.pendingInvitations[0]?.groupName).toBe("Kim family moments");
   });
 
   it("recomputes candidate review and order summaries after photo and like writes", async () => {

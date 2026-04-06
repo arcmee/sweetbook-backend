@@ -6,6 +6,7 @@ import {
   type CandidateCardSnapshot,
   type CandidateReviewSnapshot,
   type EventCardSnapshot,
+  type GroupMemberSnapshot,
   type GroupCardSnapshot,
   type OrderEntrySnapshot,
   type PagePreviewSnapshot,
@@ -30,8 +31,25 @@ type EventRow = {
   id: string;
   name: string;
   group_name: string;
-  status: EventCardSnapshot["status"];
+  description: string;
+  voting_starts_at: string;
+  voting_ends_at: string;
+  voting_closed_manually: boolean;
   photo_count: string;
+};
+
+type GroupMemberRow = {
+  group_id: string;
+  user_id: string;
+  role: string;
+};
+
+type PendingInvitationRow = {
+  invitation_id: string;
+  group_id: string;
+  group_name: string;
+  invited_user_id: string;
+  invited_by_user_id: string;
 };
 
 type PhotoWorkflowRow = {
@@ -51,6 +69,16 @@ type PhotoWorkflowRow = {
 };
 
 const PROTOTYPE_VIEWER_ID = "user-demo";
+const PROTOTYPE_USER_DIRECTORY = [
+  { userId: "user-demo", username: "demo", displayName: "SweetBook Demo User" },
+  { userId: "user-mina", username: "mina", displayName: "Mina" },
+  { userId: "user-joon", username: "joon", displayName: "Joon" },
+  { userId: "user-ara", username: "ara", displayName: "Ara" },
+  { userId: "user-soo", username: "soo", displayName: "Soo" },
+  { userId: "user-yuri", username: "yuri", displayName: "Yuri" },
+  { userId: "user-haru", username: "haru", displayName: "Haru" },
+  { userId: "user-sena", username: "sena", displayName: "Sena" },
+] as const;
 
 export async function initializePrototypeWorkspaceStore(
   pool: Pick<Pool, "query">,
@@ -74,15 +102,42 @@ export async function initializePrototypeWorkspaceStore(
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS prototype_group_invitations (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES prototype_groups(id) ON DELETE CASCADE,
+      invited_user_id TEXT NOT NULL,
+      invited_by_user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (group_id, invited_user_id)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS prototype_events (
       id TEXT PRIMARY KEY,
       group_id TEXT NOT NULL REFERENCES prototype_groups(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       status TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      voting_starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      voting_ends_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
+      voting_closed_manually BOOLEAN NOT NULL DEFAULT FALSE,
       photo_count INTEGER NOT NULL DEFAULT 0,
       occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(
+    "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS voting_starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS voting_ends_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days'",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS voting_closed_manually BOOLEAN NOT NULL DEFAULT FALSE",
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS prototype_photo_workflows (
@@ -203,10 +258,64 @@ export async function seedPrototypeWorkspaceStore(
 
   await pool.query(
     `
-      INSERT INTO prototype_events (id, group_id, title, status, photo_count)
+      INSERT INTO prototype_events (
+        id,
+        group_id,
+        title,
+        status,
+        description,
+        voting_starts_at,
+        voting_ends_at,
+        voting_closed_manually,
+        photo_count
+      )
       VALUES
-        ('event-birthday', 'group-han', 'First birthday album', 'collecting', 124),
-        ('event-holiday', 'group-park', 'Winter holiday trip', 'draft', 36)
+        (
+          'event-birthday',
+          'group-han',
+          'First birthday album',
+          'collecting',
+          'Collect the best first birthday moments before the family vote closes.',
+          '2026-04-01T09:00:00.000Z',
+          '2026-04-14T09:00:00.000Z',
+          FALSE,
+          124
+        ),
+        (
+          'event-holiday',
+          'group-park',
+          'Winter holiday trip',
+          'draft',
+          'Prepare the holiday trip highlights before the cousins voting window opens.',
+          '2026-04-20T09:00:00.000Z',
+          '2026-04-30T09:00:00.000Z',
+          FALSE,
+          36
+        )
+      ON CONFLICT (id) DO NOTHING
+    `,
+  );
+
+  await pool.query(
+    `
+      INSERT INTO prototype_groups (id, name, owner_id)
+      VALUES ('group-kim', 'Kim family moments', 'user-sena')
+      ON CONFLICT (id) DO NOTHING
+    `,
+  );
+
+  await pool.query(
+    `
+      INSERT INTO prototype_group_memberships (group_id, user_id, role)
+      VALUES ('group-kim', 'user-sena', 'Owner')
+      ON CONFLICT (group_id, user_id) DO NOTHING
+    `,
+  );
+
+  await pool.query(
+    `
+      INSERT INTO prototype_group_invitations (id, group_id, invited_user_id, invited_by_user_id)
+      VALUES ('invite-kim', 'group-kim', 'user-demo', 'user-sena')
       ON CONFLICT (id) DO NOTHING
     `,
   );
@@ -386,7 +495,10 @@ export function createPrototypeWorkspaceSnapshotLoader(
           e.id,
           e.title AS name,
           g.name AS group_name,
-          e.status,
+          e.description,
+          e.voting_starts_at::text,
+          e.voting_ends_at::text,
+          e.voting_closed_manually,
           e.photo_count::text
         FROM prototype_events e
         INNER JOIN prototype_groups g
@@ -400,6 +512,29 @@ export function createPrototypeWorkspaceSnapshotLoader(
         SELECT COUNT(*)::text AS total_memberships
         FROM prototype_group_memberships
       `,
+    );
+    const groupMembersResult = await pool.query<GroupMemberRow>(
+      `
+        SELECT group_id, user_id, role
+        FROM prototype_group_memberships
+        ORDER BY group_id ASC, user_id ASC
+      `,
+    );
+    const pendingInvitationsResult = await pool.query<PendingInvitationRow>(
+      `
+        SELECT
+          i.id AS invitation_id,
+          i.group_id,
+          g.name AS group_name,
+          i.invited_user_id,
+          i.invited_by_user_id
+        FROM prototype_group_invitations i
+        INNER JOIN prototype_groups g
+          ON g.id = i.group_id
+        WHERE i.invited_user_id = $1
+        ORDER BY i.created_at ASC, i.id ASC
+      `,
+      [PROTOTYPE_VIEWER_ID],
     );
 
     const photoWorkflowRows = await pool.query<PhotoWorkflowRow>(
@@ -436,10 +571,15 @@ export function createPrototypeWorkspaceSnapshotLoader(
     }));
 
     const events: EventCardSnapshot[] = eventsResult.rows.map((row) => ({
+      ...buildVotingFields({
+        votingStartsAt: row.voting_starts_at,
+        votingEndsAt: row.voting_ends_at,
+        votingClosedManually: row.voting_closed_manually,
+      }),
       id: row.id,
       name: row.name,
       groupName: row.group_name,
-      status: row.status,
+      description: row.description,
       photoCount: Number.parseInt(row.photo_count, 10),
     }));
 
@@ -500,6 +640,20 @@ export function createPrototypeWorkspaceSnapshotLoader(
     const orderEntries = candidateReviews.map((review) =>
       buildOrderEntrySnapshot(review),
     );
+    const groupMembers: GroupMemberSnapshot[] = groupMembersResult.rows.map((row) => ({
+      groupId: row.group_id,
+      userId: row.user_id,
+      displayName: getPrototypeDisplayName(row.user_id),
+      role: row.role,
+    }));
+    const pendingInvitations = pendingInvitationsResult.rows.map((row) => ({
+      invitationId: row.invitation_id,
+      groupId: row.group_id,
+      groupName: row.group_name,
+      invitedUserId: row.invited_user_id,
+      invitedUserDisplayName: getPrototypeDisplayName(row.invited_user_id),
+      invitedByDisplayName: getPrototypeDisplayName(row.invited_by_user_id),
+    }));
 
     return {
       ...buildPrototypeWorkspaceSnapshot({
@@ -513,6 +667,8 @@ export function createPrototypeWorkspaceSnapshotLoader(
         groups,
         events,
       }),
+      groupMembers,
+      pendingInvitations,
       photoWorkflows: [...photoWorkflowMap.values()],
       candidateReviews,
       orderEntries,
@@ -555,10 +711,19 @@ export function createPrototypeGroupCreator(
 
 export function createPrototypeEventCreator(
   pool: Pick<Pool, "query">,
-): (input: { groupId: string; title: string }) => Promise<void> {
+): (input: {
+  groupId: string;
+  title: string;
+  description: string;
+  votingStartsAt: string;
+  votingEndsAt: string;
+}) => Promise<void> {
   return async (input) => {
     const groupId = input.groupId.trim();
     const title = input.title.trim();
+    const description = input.description.trim();
+    const votingStartsAt = input.votingStartsAt.trim();
+    const votingEndsAt = input.votingEndsAt.trim();
 
     if (!groupId) {
       throw new Error("Prototype event group id is required");
@@ -568,18 +733,60 @@ export function createPrototypeEventCreator(
       throw new Error("Prototype event title is required");
     }
 
+    if (!description) {
+      throw new Error("Prototype event description is required");
+    }
+
+    if (!votingStartsAt || !votingEndsAt) {
+      throw new Error("Prototype event voting period is required");
+    }
+
+    const votingStartsAtDate = new Date(votingStartsAt);
+    const votingEndsAtDate = new Date(votingEndsAt);
+
+    if (Number.isNaN(votingStartsAtDate.valueOf()) || Number.isNaN(votingEndsAtDate.valueOf())) {
+      throw new Error("Prototype event voting period must use valid datetimes");
+    }
+
+    if (votingStartsAtDate >= votingEndsAtDate) {
+      throw new Error("Prototype event voting end must be after the start");
+    }
+
     const result = await pool.query<{ count: string }>(
       "SELECT COUNT(*)::text AS count FROM prototype_events",
     );
     const nextCount = Number.parseInt(result.rows[0]?.count ?? "0", 10) + 1;
     const nextEventId = `event-created-${nextCount}`;
+    const initialStatus = resolveEventStatus({
+      votingStartsAt: votingStartsAtDate.toISOString(),
+      votingEndsAt: votingEndsAtDate.toISOString(),
+      votingClosedManually: false,
+    });
 
     await pool.query(
       `
-        INSERT INTO prototype_events (id, group_id, title, status, photo_count)
-        VALUES ($1, $2, $3, 'draft', 0)
+        INSERT INTO prototype_events (
+          id,
+          group_id,
+          title,
+          status,
+          description,
+          voting_starts_at,
+          voting_ends_at,
+          voting_closed_manually,
+          photo_count
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, 0)
       `,
-      [nextEventId, groupId, title],
+      [
+        nextEventId,
+        groupId,
+        title,
+        initialStatus,
+        description,
+        votingStartsAtDate.toISOString(),
+        votingEndsAtDate.toISOString(),
+      ],
     );
 
     await pool.query(
@@ -595,6 +802,324 @@ export function createPrototypeEventCreator(
       [nextEventId],
     );
   };
+}
+
+export function createPrototypeEventVotingCloser(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    if (!eventId) {
+      throw new Error("Prototype event id is required");
+    }
+
+    await pool.query(
+      `
+        UPDATE prototype_events
+        SET voting_closed_manually = TRUE
+        WHERE id = $1
+      `,
+      [eventId],
+    );
+  };
+}
+
+export function createPrototypeEventVotingExtender(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; votingEndsAt: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const votingEndsAt = input.votingEndsAt.trim();
+
+    if (!eventId) {
+      throw new Error("Prototype event id is required");
+    }
+
+    if (!votingEndsAt) {
+      throw new Error("Prototype event voting end is required");
+    }
+
+    const votingEndsAtDate = new Date(votingEndsAt);
+    if (Number.isNaN(votingEndsAtDate.valueOf())) {
+      throw new Error("Prototype event voting end must use a valid datetime");
+    }
+
+    await pool.query(
+      `
+        UPDATE prototype_events
+        SET
+          voting_ends_at = $2,
+          voting_closed_manually = FALSE
+        WHERE id = $1
+      `,
+      [eventId, votingEndsAtDate.toISOString()],
+    );
+  };
+}
+
+export function createPrototypeUserSearch(): (input: {
+  query: string;
+}) => Promise<Array<{ userId: string; username: string; displayName: string }>> {
+  return async (input) => {
+    const normalizedQuery = input.query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    return PROTOTYPE_USER_DIRECTORY.filter(
+      (user) =>
+        user.userId.toLowerCase().includes(normalizedQuery) ||
+        user.username.toLowerCase().includes(normalizedQuery) ||
+        user.displayName.toLowerCase().includes(normalizedQuery),
+    );
+  };
+}
+
+export function createPrototypeGroupInviteCreator(
+  pool: Pick<Pool, "query">,
+): (input: { groupId: string; userId: string }) => Promise<void> {
+  return async (input) => {
+    const groupId = input.groupId.trim();
+    const userId = input.userId.trim();
+
+    if (!groupId || !userId) {
+      throw new Error("Prototype group invite requires group and user ids");
+    }
+
+    if (!PROTOTYPE_USER_DIRECTORY.some((user) => user.userId === userId)) {
+      throw new Error("Prototype user was not found");
+    }
+
+    const membershipResult = await pool.query<{ role: string }>(
+      `
+        SELECT role
+        FROM prototype_group_memberships
+        WHERE group_id = $1 AND user_id = $2
+      `,
+      [groupId, userId],
+    );
+    if (membershipResult.rows.length > 0) {
+      throw new Error("Prototype user already belongs to this group");
+    }
+
+    const inviteCountResult = await pool.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM prototype_group_invitations",
+    );
+    const nextCount = Number.parseInt(inviteCountResult.rows[0]?.count ?? "0", 10) + 1;
+    const nextInvitationId = `invite-created-${nextCount}`;
+
+    await pool.query(
+      `
+        INSERT INTO prototype_group_invitations (id, group_id, invited_user_id, invited_by_user_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (group_id, invited_user_id) DO NOTHING
+      `,
+      [nextInvitationId, groupId, userId, PROTOTYPE_VIEWER_ID],
+    );
+  };
+}
+
+export function createPrototypeInvitationAcceptor(
+  pool: Pick<Pool, "query">,
+): (input: { invitationId: string; userId: string }) => Promise<void> {
+  return async (input) => {
+    const invitationId = input.invitationId.trim();
+    const userId = input.userId.trim();
+
+    if (!invitationId || !userId) {
+      throw new Error("Prototype invitation accept requires invitation and user ids");
+    }
+
+    const invitationResult = await pool.query<{
+      group_id: string;
+      invited_user_id: string;
+    }>(
+      `
+        SELECT group_id, invited_user_id
+        FROM prototype_group_invitations
+        WHERE id = $1
+      `,
+      [invitationId],
+    );
+
+    const invitation = invitationResult.rows[0];
+    if (!invitation) {
+      throw new Error("Prototype invitation was not found");
+    }
+
+    if (invitation.invited_user_id !== userId) {
+      throw new Error("Prototype invitation does not belong to this user");
+    }
+
+    await pool.query(
+      `
+        INSERT INTO prototype_group_memberships (group_id, user_id, role)
+        VALUES ($1, $2, 'Contributor')
+        ON CONFLICT (group_id, user_id) DO NOTHING
+      `,
+      [invitation.group_id, userId],
+    );
+
+    await pool.query(
+      `
+        DELETE FROM prototype_group_invitations
+        WHERE id = $1
+      `,
+      [invitationId],
+    );
+  };
+}
+
+export function createPrototypeInvitationDecliner(
+  pool: Pick<Pool, "query">,
+): (input: { invitationId: string; userId: string }) => Promise<void> {
+  return async (input) => {
+    const invitationId = input.invitationId.trim();
+    const userId = input.userId.trim();
+
+    if (!invitationId || !userId) {
+      throw new Error("Prototype invitation decline requires invitation and user ids");
+    }
+
+    const result = await pool.query(
+      `
+        DELETE FROM prototype_group_invitations
+        WHERE id = $1 AND invited_user_id = $2
+      `,
+      [invitationId, userId],
+    );
+
+    if ((result as { rowCount?: number }).rowCount === 0) {
+      throw new Error("Prototype invitation was not found");
+    }
+  };
+}
+
+export function createPrototypeOwnerTransfer(
+  pool: Pick<Pool, "query">,
+): (input: { groupId: string; nextOwnerUserId: string }) => Promise<void> {
+  return async (input) => {
+    const groupId = input.groupId.trim();
+    const nextOwnerUserId = input.nextOwnerUserId.trim();
+
+    if (!groupId || !nextOwnerUserId) {
+      throw new Error("Prototype owner transfer requires group and next owner ids");
+    }
+
+    await pool.query(
+      `
+        UPDATE prototype_group_memberships
+        SET role = 'Editor'
+        WHERE group_id = $1 AND role = 'Owner'
+      `,
+      [groupId],
+    );
+
+    const result = await pool.query(
+      `
+        UPDATE prototype_group_memberships
+        SET role = 'Owner'
+        WHERE group_id = $1 AND user_id = $2
+      `,
+      [groupId, nextOwnerUserId],
+    );
+
+    if ((result as { rowCount?: number }).rowCount === 0) {
+      throw new Error("Next owner must already belong to the group");
+    }
+  };
+}
+
+export function createPrototypeGroupLeaveAction(
+  pool: Pick<Pool, "query">,
+): (input: { groupId: string; userId: string }) => Promise<void> {
+  return async (input) => {
+    const groupId = input.groupId.trim();
+    const userId = input.userId.trim();
+
+    if (!groupId || !userId) {
+      throw new Error("Prototype leave action requires group and user ids");
+    }
+
+    const membershipResult = await pool.query<{ role: string }>(
+      `
+        SELECT role
+        FROM prototype_group_memberships
+        WHERE group_id = $1 AND user_id = $2
+      `,
+      [groupId, userId],
+    );
+
+    const membership = membershipResult.rows[0];
+    if (!membership) {
+      throw new Error("Prototype membership was not found");
+    }
+
+    if (membership.role === "Owner") {
+      throw new Error("Group owners must transfer ownership before leaving");
+    }
+
+    await pool.query(
+      `
+        DELETE FROM prototype_group_memberships
+        WHERE group_id = $1 AND user_id = $2
+      `,
+      [groupId, userId],
+    );
+  };
+}
+
+function buildVotingFields(input: {
+  votingStartsAt: string;
+  votingEndsAt: string;
+  votingClosedManually: boolean;
+}): Pick<
+  EventCardSnapshot,
+  | "status"
+  | "votingStartsAt"
+  | "votingEndsAt"
+  | "votingClosedManually"
+  | "canVote"
+  | "canOwnerSelectPhotos"
+> {
+  const status = resolveEventStatus(input);
+
+  return {
+    status,
+    votingStartsAt: input.votingStartsAt,
+    votingEndsAt: input.votingEndsAt,
+    votingClosedManually: input.votingClosedManually,
+    canVote: status === "collecting",
+    canOwnerSelectPhotos: status === "ready",
+  };
+}
+
+function resolveEventStatus(input: {
+  votingStartsAt: string;
+  votingEndsAt: string;
+  votingClosedManually: boolean;
+}): EventCardSnapshot["status"] {
+  if (input.votingClosedManually) {
+    return "ready";
+  }
+
+  const now = Date.now();
+  const votingStartsAt = new Date(input.votingStartsAt).valueOf();
+  const votingEndsAt = new Date(input.votingEndsAt).valueOf();
+
+  if (Number.isNaN(votingStartsAt) || Number.isNaN(votingEndsAt)) {
+    return "draft";
+  }
+
+  if (now < votingStartsAt) {
+    return "draft";
+  }
+
+  if (now > votingEndsAt) {
+    return "ready";
+  }
+
+  return "collecting";
 }
 
 export function createPrototypePhotoCreator(
@@ -907,4 +1432,10 @@ function buildSelectionReason(photo: PhotoCardSnapshot, rank: number): string {
   }
 
   return `Selected because ${photo.caption} remains one of the strongest liked moments in this event.`;
+}
+
+function getPrototypeDisplayName(userId: string): string {
+  return (
+    PROTOTYPE_USER_DIRECTORY.find((user) => user.userId === userId)?.displayName ?? userId
+  );
 }
