@@ -5,14 +5,18 @@ import type {
   SweetBookFilePart,
   SweetBookFinalizeResult,
   SweetBookOrderEstimateResult,
+  SweetBookOrderItemInput,
   SweetBookOrderResult,
   SweetBookPhotoUploadResult,
+  SweetBookShippingAddressInput,
 } from "./ports/sweetbook-client";
 
 export interface PublishAlbumProjectInput {
   albumTitle: string;
   bookSpecUid: string;
   quantity: number;
+  shipping: SweetBookShippingAddressInput;
+  externalRef?: string;
   cover: {
     templateUid: string;
     parameters: Record<string, unknown>;
@@ -44,6 +48,15 @@ export interface PublishAlbumProjectResult {
 
 export interface SweetBookOrchestrationServiceDependencies {
   sweetBookClient: SweetBookClient;
+}
+
+export class SweetBookInsufficientCreditError extends Error {
+  constructor(
+    public readonly estimate: SweetBookOrderEstimateResult,
+  ) {
+    super("SweetBook credits are insufficient for order submission");
+    this.name = "SweetBookInsufficientCreditError";
+  }
 }
 
 export function createSweetBookOrchestrationService(
@@ -94,14 +107,25 @@ export function createSweetBookOrchestrationService(
         bookUid: createdBook.bookUid,
       });
 
+      const orderItems: SweetBookOrderItemInput[] = [
+        {
+          bookUid: createdBook.bookUid,
+          quantity: input.quantity,
+        },
+      ];
+
       const estimate = await dependencies.sweetBookClient.estimateOrder({
-        bookUid: createdBook.bookUid,
-        quantity: input.quantity,
+        items: orderItems,
       });
 
+      if (estimate.creditSufficient === false) {
+        throw new SweetBookInsufficientCreditError(estimate);
+      }
+
       const order = await dependencies.sweetBookClient.submitOrder({
-        bookUid: createdBook.bookUid,
-        quantity: input.quantity,
+        items: orderItems,
+        shipping: input.shipping,
+        externalRef: input.externalRef,
         idempotencyKey: input.idempotency?.submitOrder,
       });
 

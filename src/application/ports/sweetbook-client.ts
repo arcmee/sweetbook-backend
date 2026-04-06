@@ -22,27 +22,62 @@ export interface SweetBookFinalizeResult {
 }
 export const SweetBookFinalizeResult = Symbol("SweetBookFinalizeResult");
 
-export interface EstimateSweetBookOrderInput {
+export interface SweetBookOrderItemInput {
   bookUid: string;
   quantity: number;
 }
 
+export interface EstimateSweetBookOrderInput {
+  items: SweetBookOrderItemInput[];
+}
+
 export interface SweetBookOrderEstimateResult {
-  estimateId: string;
+  items?: Array<{
+    bookUid: string;
+    bookSpecUid?: string | null;
+    pageCount?: number | null;
+    quantity: number;
+    unitPrice?: number | null;
+    itemAmount?: number | null;
+    packagingFee?: number | null;
+  }>;
   totalAmount: number;
+  paidCreditAmount?: number | null;
+  creditBalance?: number | null;
+  creditSufficient?: boolean | null;
   currency: string;
 }
 export const SweetBookOrderEstimateResult = Symbol("SweetBookOrderEstimateResult");
 
+export interface SweetBookShippingAddressInput {
+  recipientName: string;
+  recipientPhone: string;
+  postalCode: string;
+  address1: string;
+  address2: string;
+  memo?: string;
+}
+
 export interface SubmitSweetBookOrderInput {
-  bookUid: string;
-  quantity: number;
+  items: SweetBookOrderItemInput[];
+  shipping: SweetBookShippingAddressInput;
+  externalRef?: string;
   idempotencyKey?: string;
 }
 
 export interface SweetBookOrderResult {
   orderUid: string;
-  orderStatus: string;
+  orderStatus: number | string;
+  orderStatusDisplay?: string | null;
+  paidCreditAmount?: number | null;
+  creditBalanceAfter?: number | null;
+  items?: Array<{
+    itemUid: string;
+    bookUid: string;
+    pageCount?: number | null;
+    itemStatus?: number | string | null;
+    itemStatusDisplay?: string | null;
+  }>;
 }
 export const SweetBookOrderResult = Symbol("SweetBookOrderResult");
 

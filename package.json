@@ -6,6 +6,8 @@
   "scripts": {
     "start": "tsx src/presentation/server.ts",
     "sweetbook:smoke": "tsx src/presentation/sweetbook-sandbox-smoke.ts",
+    "sweetbook:probe": "tsx src/presentation/sweetbook-sandbox-write-probe.ts",
+    "sweetbook:probe:isolation": "tsx src/presentation/sweetbook-sandbox-isolated-probe.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

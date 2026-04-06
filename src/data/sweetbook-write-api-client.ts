@@ -64,8 +64,7 @@ export function createSweetBookWriteApiClient(
         config,
         "/orders/estimate",
         {
-          bookUid: input.bookUid,
-          quantity: input.quantity,
+          items: input.items,
         },
         fetchImpl,
       ).then((payload) => payload.data);
@@ -156,8 +155,9 @@ export function createSweetBookWriteApiClient(
         config,
         "/orders",
         {
-          bookUid: input.bookUid,
-          quantity: input.quantity,
+          items: input.items,
+          shipping: input.shipping,
+          externalRef: input.externalRef,
         },
         fetchImpl,
         input.idempotencyKey,
@@ -190,7 +190,7 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`SweetBook request failed with status ${response.status}`);
+    throw await createHttpError(response);
   }
 
   const payload = (await response.json()) as Envelope<unknown>;
@@ -219,7 +219,7 @@ async function multipartRequest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`SweetBook request failed with status ${response.status}`);
+    throw await createHttpError(response);
   }
 
   const payload = (await response.json()) as Envelope<unknown>;
@@ -235,5 +235,31 @@ async function multipartRequest<T>(
 function stripUndefined(body: object): object {
   return Object.fromEntries(
     Object.entries(body).filter(([, value]) => value !== undefined),
+  );
+}
+
+async function createHttpError(response: Response): Promise<Error> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const payload = (await response.json()) as {
+      message?: string;
+      errors?: string[];
+    };
+    const detail = payload.errors?.join(", ");
+    const message = payload.message ?? "SweetBook request failed";
+
+    return new Error(
+      detail
+        ? `${message} (status ${response.status}): ${detail}`
+        : `${message} (status ${response.status})`,
+    );
+  }
+
+  const text = await response.text();
+  return new Error(
+    text
+      ? `SweetBook request failed with status ${response.status}: ${text}`
+      : `SweetBook request failed with status ${response.status}`,
   );
 }

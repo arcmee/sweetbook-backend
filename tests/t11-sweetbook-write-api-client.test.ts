@@ -93,7 +93,12 @@ describe("SweetBook write api client", () => {
           success: true,
           message: "Estimate created",
           data: {
-            estimateId: "est_1",
+            items: [
+              {
+                bookUid: "bk_123",
+                quantity: 1,
+              },
+            ],
             totalAmount: 100,
             currency: "KRW",
           },
@@ -106,7 +111,7 @@ describe("SweetBook write api client", () => {
           message: "Order created",
           data: {
             orderUid: "ord_1",
-            orderStatus: "PAID",
+            orderStatus: 20,
           },
         }),
       });
@@ -121,21 +126,65 @@ describe("SweetBook write api client", () => {
     );
 
     const estimate = await client.estimateOrder({
-      bookUid: "bk_123",
-      quantity: 1,
+      items: [
+        {
+          bookUid: "bk_123",
+          quantity: 1,
+        },
+      ],
     });
     const order = await client.submitOrder({
-      bookUid: "bk_123",
-      quantity: 1,
+      items: [
+        {
+          bookUid: "bk_123",
+          quantity: 1,
+        },
+      ],
+      shipping: {
+        recipientName: "SweetBook Tester",
+        recipientPhone: "010-1234-5678",
+        postalCode: "06236",
+        address1: "Seoul Test Road 123",
+        address2: "Suite 4",
+      },
       idempotencyKey: "order-1",
     });
 
-    expect(estimate.estimateId).toBe("est_1");
+    expect(estimate.items?.[0]?.bookUid).toBe("bk_123");
     expect(order.orderUid).toBe("ord_1");
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://api-sandbox.sweetbook.com/v1/orders/estimate",
+      expect.objectContaining({
+        body: JSON.stringify({
+          items: [
+            {
+              bookUid: "bk_123",
+              quantity: 1,
+            },
+          ],
+        }),
+      }),
+    );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
       "https://api-sandbox.sweetbook.com/v1/orders",
       expect.objectContaining({
+        body: JSON.stringify({
+          items: [
+            {
+              bookUid: "bk_123",
+              quantity: 1,
+            },
+          ],
+          shipping: {
+            recipientName: "SweetBook Tester",
+            recipientPhone: "010-1234-5678",
+            postalCode: "06236",
+            address1: "Seoul Test Road 123",
+            address2: "Suite 4",
+          },
+        }),
         headers: expect.objectContaining({
           "Idempotency-Key": "order-1",
         }),

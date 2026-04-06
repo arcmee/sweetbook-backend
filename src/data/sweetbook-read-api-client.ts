@@ -1,7 +1,11 @@
 import type {
+  SweetBookBookListOptions,
+  SweetBookBookListResult,
+  SweetBookBookPhotoListResult,
   SweetBookBookSpec,
   SweetBookCreditsBalance,
   SweetBookReadClient,
+  SweetBookTemplateDetail,
   SweetBookTemplateListOptions,
   SweetBookTemplateListResult,
   SweetBookTemplatePagination,
@@ -19,6 +23,11 @@ type Envelope<T> = {
 type TemplateListEnvelopeData = {
   templates: SweetBookTemplateSummary[];
   pagination: SweetBookTemplatePagination;
+};
+
+type BookListEnvelopeData = {
+  books: SweetBookBookListResult["books"];
+  total: number;
 };
 
 export function createSweetBookReadApiClient(
@@ -71,6 +80,53 @@ export function createSweetBookReadApiClient(
       const payload = await request<Envelope<SweetBookCreditsBalance>>(
         config,
         "/credits",
+        fetchImpl,
+      );
+
+      return payload.data;
+    },
+
+    async getTemplateDetail(templateUid: string): Promise<SweetBookTemplateDetail> {
+      const payload = await request<Envelope<SweetBookTemplateDetail>>(
+        config,
+        `/templates/${templateUid}`,
+        fetchImpl,
+      );
+
+      return payload.data;
+    },
+
+    async listBooks(
+      options: SweetBookBookListOptions = {},
+    ): Promise<SweetBookBookListResult> {
+      const searchParams = new URLSearchParams();
+
+      if (typeof options.limit === "number") {
+        searchParams.set("limit", `${options.limit}`);
+      }
+
+      if (typeof options.offset === "number") {
+        searchParams.set("offset", `${options.offset}`);
+      }
+
+      if (options.status) {
+        searchParams.set("status", options.status);
+      }
+
+      const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+      const payload = await request<Envelope<BookListEnvelopeData>>(
+        config,
+        `/books${suffix}`,
+        fetchImpl,
+      );
+
+      return payload.data;
+    },
+
+    async listBookPhotos(bookUid: string): Promise<SweetBookBookPhotoListResult> {
+      const payload = await request<Envelope<SweetBookBookPhotoListResult>>(
+        config,
+        `/books/${bookUid}/photos`,
         fetchImpl,
       );
 

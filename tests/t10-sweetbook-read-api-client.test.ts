@@ -118,4 +118,86 @@ describe("SweetBook read api client", () => {
 
     await expect(client.getCredits()).rejects.toThrow("Insufficient Credit");
   });
+
+  it("lists uploaded book photos from the diagnostic endpoint", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        message: "Success",
+        data: {
+          photos: [
+            {
+              fileName: "photo-1.jpg",
+              originalName: "family.jpg",
+              mimeType: "image/jpeg",
+              width: 1200,
+              height: 900,
+              createdAt: "2026-04-06T00:00:00.000Z",
+            },
+          ],
+          totalCount: 1,
+        },
+      }),
+    });
+
+    const client = createSweetBookReadApiClient(
+      {
+        apiKey: "test-key",
+        baseUrl: "https://api-sandbox.sweetbook.com/v1",
+        environment: "sandbox",
+      },
+      fetchImpl as typeof fetch,
+    );
+
+    const result = await client.listBookPhotos("book-123");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api-sandbox.sweetbook.com/v1/books/book-123/photos",
+      expect.any(Object),
+    );
+    expect(result.totalCount).toBe(1);
+    expect(result.photos[0]?.fileName).toBe("photo-1.jpg");
+  });
+
+  it("lists books for page-count diagnostics", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        message: "Success",
+        data: {
+          books: [
+            {
+              bookUid: "book-123",
+              title: "Probe Book",
+              bookSpecUid: "SQUAREBOOK_HC",
+              status: "draft",
+              pageCount: 24,
+            },
+          ],
+          total: 1,
+        },
+      }),
+    });
+
+    const client = createSweetBookReadApiClient(
+      {
+        apiKey: "test-key",
+        baseUrl: "https://api-sandbox.sweetbook.com/v1",
+        environment: "sandbox",
+      },
+      fetchImpl as typeof fetch,
+    );
+
+    const result = await client.listBooks({ limit: 5 });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api-sandbox.sweetbook.com/v1/books?limit=5",
+      expect.any(Object),
+    );
+    expect(result.total).toBe(1);
+    expect(result.books[0]?.pageCount).toBe(24);
+    expect(result.books[0]?.status).toBe("draft");
+  });
 });

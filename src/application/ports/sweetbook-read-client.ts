@@ -19,6 +19,23 @@ export interface SweetBookTemplateSummary {
   status: string;
 }
 
+export interface SweetBookTemplateParameterDefinition {
+  binding?: string | null;
+  type?: string | null;
+  required?: boolean | null;
+  description?: string | null;
+}
+
+export interface SweetBookTemplateDetail {
+  templateUid: string;
+  templateName: string;
+  templateKind: string;
+  bookSpecUid: string;
+  parameters?: {
+    definitions?: Record<string, SweetBookTemplateParameterDefinition>;
+  } | null;
+}
+
 export interface SweetBookTemplatePagination {
   total: number;
   limit: number;
@@ -38,6 +55,41 @@ export interface SweetBookCreditsBalance {
   env?: string | null;
 }
 
+export interface SweetBookUploadedPhoto {
+  fileName: string;
+  originalName?: string | null;
+  mimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+  createdAt?: string | null;
+}
+
+export interface SweetBookBookPhotoListResult {
+  photos: SweetBookUploadedPhoto[];
+  totalCount: number;
+}
+
+export interface SweetBookBookSummary {
+  bookUid: string;
+  title?: string | null;
+  bookSpecUid?: string | null;
+  status?: number | string | null;
+  pageCount?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface SweetBookBookListResult {
+  books: SweetBookBookSummary[];
+  total: number;
+}
+
+export interface SweetBookBookListOptions {
+  limit?: number;
+  offset?: number;
+  status?: string;
+}
+
 export interface SweetBookTemplateListOptions {
   bookSpecUid?: string;
   limit?: number;
@@ -50,6 +102,9 @@ export interface SweetBookReadClient {
   listTemplates(
     options?: SweetBookTemplateListOptions,
   ): Promise<SweetBookTemplateListResult>;
+  getTemplateDetail(templateUid: string): Promise<SweetBookTemplateDetail>;
+  listBooks(options?: SweetBookBookListOptions): Promise<SweetBookBookListResult>;
+  listBookPhotos(bookUid: string): Promise<SweetBookBookPhotoListResult>;
   getCredits(): Promise<SweetBookCreditsBalance>;
 }
 
