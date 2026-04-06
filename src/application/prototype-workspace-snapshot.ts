@@ -81,45 +81,46 @@ export type PrototypeWorkspaceSnapshot = {
   orderEntries: OrderEntrySnapshot[];
 };
 
-const prototypeWorkspaceSnapshot: PrototypeWorkspaceSnapshot = {
-  workspace: {
-    groupSummary: {
-      totalGroups: 2,
-      totalMembers: 7,
-    },
-    groups: [
-      {
-        id: "group-han",
-        name: "Han family",
-        memberCount: 4,
-        role: "Owner",
-        eventCount: 2,
-      },
-      {
-        id: "group-park",
-        name: "Park cousins",
-        memberCount: 3,
-        role: "Editor",
-        eventCount: 1,
-      },
-    ],
-    events: [
-      {
-        id: "event-birthday",
-        name: "First birthday album",
-        groupName: "Han family",
-        status: "collecting",
-        photoCount: 124,
-      },
-      {
-        id: "event-holiday",
-        name: "Winter holiday trip",
-        groupName: "Park cousins",
-        status: "draft",
-        photoCount: 36,
-      },
-    ],
+const prototypeWorkspace: WorkspaceSnapshot = {
+  groupSummary: {
+    totalGroups: 2,
+    totalMembers: 7,
   },
+  groups: [
+    {
+      id: "group-han",
+      name: "Han family",
+      memberCount: 4,
+      role: "Owner",
+      eventCount: 2,
+    },
+    {
+      id: "group-park",
+      name: "Park cousins",
+      memberCount: 3,
+      role: "Editor",
+      eventCount: 1,
+    },
+  ],
+  events: [
+    {
+      id: "event-birthday",
+      name: "First birthday album",
+      groupName: "Han family",
+      status: "collecting",
+      photoCount: 124,
+    },
+    {
+      id: "event-holiday",
+      name: "Winter holiday trip",
+      groupName: "Park cousins",
+      status: "draft",
+      photoCount: 36,
+    },
+  ],
+};
+
+const prototypeInteractionSnapshot = {
   photoWorkflows: [
     {
       activeEventId: "event-birthday",
@@ -228,8 +229,23 @@ const prototypeWorkspaceSnapshot: PrototypeWorkspaceSnapshot = {
       },
     },
   ],
-};
+} satisfies Omit<PrototypeWorkspaceSnapshot, "workspace">;
+
+export function buildPrototypeWorkspaceSnapshot(
+  workspace: WorkspaceSnapshot,
+): PrototypeWorkspaceSnapshot {
+  return {
+    workspace,
+    photoWorkflows: prototypeInteractionSnapshot.photoWorkflows,
+    candidateReviews: prototypeInteractionSnapshot.candidateReviews,
+    orderEntries: prototypeInteractionSnapshot.orderEntries,
+  };
+}
 
 export function getPrototypeWorkspaceSnapshot(): PrototypeWorkspaceSnapshot {
-  return prototypeWorkspaceSnapshot;
+  return buildPrototypeWorkspaceSnapshot(prototypeWorkspace);
+}
+
+export function getPrototypeWorkspace(): WorkspaceSnapshot {
+  return prototypeWorkspace;
 }

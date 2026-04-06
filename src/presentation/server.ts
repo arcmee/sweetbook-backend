@@ -1,6 +1,19 @@
 import { createPrototypeSweetBookEstimateRunner } from "../application/prototype-sweetbook-estimate";
 import { createPrototypeSweetBookSubmitRunner } from "../application/prototype-sweetbook-estimate";
+import { resolveDatabaseConfig } from "../data/database-config";
 import { loadLocalEnv } from "../data/local-env-loader";
+import {
+  createPrototypeAuthSessionPostgresStore,
+  initializePrototypeAuthSessionStore,
+} from "../data/prototype-auth-session-postgres-store";
+import { createPostgresPool } from "../data/postgres-pool";
+import {
+  createPrototypeEventCreator,
+  createPrototypeGroupCreator,
+  createPrototypeWorkspaceSnapshotLoader,
+  initializePrototypeWorkspaceStore,
+  seedPrototypeWorkspaceStore,
+} from "../data/prototype-workspace-postgres-store";
 import { resolveSweetBookApiConfig } from "../data/sweetbook-api-config";
 import { createSweetBookReadApiClient } from "../data/sweetbook-read-api-client";
 import { createSweetBookWriteApiClient } from "../data/sweetbook-write-api-client";
@@ -13,7 +26,12 @@ async function main(): Promise<void> {
 
   const prototypeSweetBookEstimateRunner = createConfiguredEstimateRunner();
   const prototypeSweetBookSubmitRunner = createConfiguredSubmitRunner();
+  const persistence = await createConfiguredPersistence();
   const app = await buildApp({
+    prototypeAuthSessionStore: persistence?.prototypeAuthSessionStore,
+    prototypeEventCreator: persistence?.prototypeEventCreator,
+    prototypeGroupCreator: persistence?.prototypeGroupCreator,
+    prototypeWorkspaceSnapshotLoader: persistence?.prototypeWorkspaceSnapshotLoader,
     prototypeSweetBookEstimateRunner,
     prototypeSweetBookSubmitRunner,
   });
@@ -21,6 +39,25 @@ async function main(): Promise<void> {
   const host = process.env.HOST ?? "0.0.0.0";
 
   await app.listen({ port, host });
+}
+
+async function createConfiguredPersistence() {
+  if (!process.env.DATABASE_URL) {
+    return undefined;
+  }
+
+  const databaseConfig = resolveDatabaseConfig(process.env);
+  const pool = createPostgresPool(databaseConfig);
+  await initializePrototypeAuthSessionStore(pool);
+  await initializePrototypeWorkspaceStore(pool);
+  await seedPrototypeWorkspaceStore(pool);
+
+  return {
+    prototypeAuthSessionStore: createPrototypeAuthSessionPostgresStore(pool),
+    prototypeEventCreator: createPrototypeEventCreator(pool),
+    prototypeGroupCreator: createPrototypeGroupCreator(pool),
+    prototypeWorkspaceSnapshotLoader: createPrototypeWorkspaceSnapshotLoader(pool),
+  };
 }
 
 function createConfiguredEstimateRunner() {
