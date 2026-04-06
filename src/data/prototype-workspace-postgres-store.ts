@@ -124,6 +124,14 @@ export async function initializePrototypeWorkspaceStore(
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS prototype_photo_likes (
+      photo_id TEXT NOT NULL REFERENCES prototype_photos(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (photo_id, user_id)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS prototype_candidate_reviews (
       event_id TEXT NOT NULL REFERENCES prototype_events(id) ON DELETE CASCADE,
       photo_id TEXT NOT NULL,
@@ -256,6 +264,17 @@ export async function seedPrototypeWorkspaceStore(
           photo.likedByViewer,
         ],
       );
+
+      if (photo.likedByViewer) {
+        await pool.query(
+          `
+            INSERT INTO prototype_photo_likes (photo_id, user_id)
+            VALUES ($1, $2)
+            ON CONFLICT (photo_id, user_id) DO NOTHING
+          `,
+          [photo.id, PROTOTYPE_VIEWER_ID],
+        );
+      }
     }
   }
 
@@ -669,6 +688,104 @@ export function createPrototypeEventCreator(
         VALUES ($1, 0, 0, 'Upload queue is local-only until backend adapters land.')
       `,
       [nextEventId],
+    );
+  };
+}
+
+export function createPrototypePhotoCreator(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; caption: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const caption = input.caption.trim();
+
+    if (!eventId) {
+      throw new Error("Prototype photo event id is required");
+    }
+
+    if (!caption) {
+      throw new Error("Prototype photo caption is required");
+    }
+
+    const result = await pool.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM prototype_photos",
+    );
+    const nextCount = Number.parseInt(result.rows[0]?.count ?? "0", 10) + 1;
+    const nextPhotoId = `photo-created-${nextCount}`;
+
+    await pool.query(
+      `
+        INSERT INTO prototype_photos (
+          id,
+          event_id,
+          caption,
+          uploaded_by,
+          like_count,
+          liked_by_viewer
+        )
+        VALUES ($1, $2, $3, 'SweetBook Demo User', 0, FALSE)
+      `,
+      [nextPhotoId, eventId, caption],
+    );
+
+    await pool.query(
+      `
+        UPDATE prototype_photo_workflows
+        SET uploaded_count = uploaded_count + 1
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+
+    await pool.query(
+      `
+        UPDATE prototype_events
+        SET photo_count = photo_count + 1
+        WHERE id = $1
+      `,
+      [eventId],
+    );
+  };
+}
+
+export function createPrototypePhotoLikeAdder(
+  pool: Pick<Pool, "query">,
+): (input: { photoId: string; userId: string }) => Promise<void> {
+  return async (input) => {
+    const photoId = input.photoId.trim();
+    const userId = input.userId.trim();
+
+    if (!photoId) {
+      throw new Error("Prototype photo id is required");
+    }
+
+    if (!userId) {
+      throw new Error("Prototype like user id is required");
+    }
+
+    const insertResult = await pool.query<{ inserted: string }>(
+      `
+        INSERT INTO prototype_photo_likes (photo_id, user_id)
+        VALUES ($1, $2)
+        ON CONFLICT (photo_id, user_id) DO NOTHING
+        RETURNING '1' AS inserted
+      `,
+      [photoId, userId],
+    );
+
+    if (insertResult.rows.length === 0) {
+      return;
+    }
+
+    await pool.query(
+      `
+        UPDATE prototype_photos
+        SET
+          like_count = like_count + 1,
+          liked_by_viewer = CASE WHEN $2 = $3 THEN TRUE ELSE liked_by_viewer END
+        WHERE id = $1
+      `,
+      [photoId, userId, PROTOTYPE_VIEWER_ID],
     );
   };
 }

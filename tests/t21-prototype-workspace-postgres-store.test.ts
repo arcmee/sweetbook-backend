@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createPrototypePhotoCreator,
+  createPrototypePhotoLikeAdder,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
   seedPrototypeWorkspaceStore,
@@ -124,5 +126,49 @@ describe("prototype workspace postgres store", () => {
       photoCount: 124,
     });
     expect(snapshot.photoWorkflows[0]?.activeEventId).toBe("event-birthday");
+  });
+
+  it("creates a photo and records a viewer like through postgres updates", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            count: "3",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            inserted: "1",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const createPhoto = createPrototypePhotoCreator({ query });
+    const addLike = createPrototypePhotoLikeAdder({ query });
+
+    await createPhoto({
+      eventId: "event-birthday",
+      caption: "New milestone",
+    });
+    await addLike({
+      photoId: "photo-created-4",
+      userId: "user-demo",
+    });
+
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("INSERT INTO prototype_photos"),
+      ["photo-created-4", "event-birthday", "New milestone"],
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO prototype_photo_likes"),
+      ["photo-created-4", "user-demo"],
+    );
   });
 });
