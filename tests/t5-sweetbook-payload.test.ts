@@ -41,12 +41,13 @@ describe("T5 SweetBook payload and API adapter", () => {
     });
   });
 
-  it("exposes SweetBook client adapter boundaries for quote, finalize, and order submission", async () => {
+  it("exposes SweetBook client adapter boundaries for book creation, finalization, estimate, and order submission", async () => {
     const module = await import("../src/application/ports/sweetbook-client");
 
     expect(module).toHaveProperty("SweetBookClient");
-    expect(module).toHaveProperty("SweetBookQuoteResult");
+    expect(module).toHaveProperty("SweetBookBookCreationResult");
     expect(module).toHaveProperty("SweetBookFinalizeResult");
+    expect(module).toHaveProperty("SweetBookOrderEstimateResult");
     expect(module).toHaveProperty("SweetBookOrderResult");
   });
 
