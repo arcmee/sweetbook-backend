@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { createPrototypeSweetBookEstimateRunner } from "../application/prototype-sweetbook-estimate";
 import { createPrototypeSweetBookSubmitRunner } from "../application/prototype-sweetbook-estimate";
 import { resolveDatabaseConfig } from "../data/database-config";
@@ -10,7 +12,9 @@ import { createPostgresPool } from "../data/postgres-pool";
 import {
   createPrototypeEventCreator,
   createPrototypeGroupCreator,
+  createPrototypePhotoAssetLoader,
   createPrototypePhotoCreator,
+  createPrototypePhotoUploader,
   createPrototypePhotoLikeAdder,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
@@ -34,6 +38,8 @@ async function main(): Promise<void> {
     prototypeEventCreator: persistence?.prototypeEventCreator,
     prototypeGroupCreator: persistence?.prototypeGroupCreator,
     prototypePhotoCreator: persistence?.prototypePhotoCreator,
+    prototypePhotoUploader: persistence?.prototypePhotoUploader,
+    prototypePhotoAssetLoader: persistence?.prototypePhotoAssetLoader,
     prototypePhotoLikeAdder: persistence?.prototypePhotoLikeAdder,
     prototypeWorkspaceSnapshotLoader: persistence?.prototypeWorkspaceSnapshotLoader,
     prototypeSweetBookEstimateRunner,
@@ -55,12 +61,18 @@ async function createConfiguredPersistence() {
   await initializePrototypeAuthSessionStore(pool);
   await initializePrototypeWorkspaceStore(pool);
   await seedPrototypeWorkspaceStore(pool);
+  const uploadDirectory =
+    process.env.PROTOTYPE_UPLOAD_DIR ?? join(process.cwd(), "var", "prototype-uploads");
 
   return {
     prototypeAuthSessionStore: createPrototypeAuthSessionPostgresStore(pool),
     prototypeEventCreator: createPrototypeEventCreator(pool),
     prototypeGroupCreator: createPrototypeGroupCreator(pool),
     prototypePhotoCreator: createPrototypePhotoCreator(pool),
+    prototypePhotoUploader: createPrototypePhotoUploader(pool, {
+      uploadDirectory,
+    }),
+    prototypePhotoAssetLoader: createPrototypePhotoAssetLoader(pool),
     prototypePhotoLikeAdder: createPrototypePhotoLikeAdder(pool),
     prototypeWorkspaceSnapshotLoader: createPrototypeWorkspaceSnapshotLoader(pool),
   };

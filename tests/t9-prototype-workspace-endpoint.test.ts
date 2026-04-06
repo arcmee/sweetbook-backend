@@ -240,6 +240,52 @@ describe("prototype workspace endpoint", () => {
     });
   });
 
+  it("delegates the prototype photo upload endpoint to the injected uploader", async () => {
+    const uploader = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypePhotoUploader: uploader,
+    });
+    const formData = new FormData();
+    formData.set("eventId", "event-birthday");
+    formData.set("caption", "Balloon arch");
+    formData.set(
+      "file",
+      new File(["demo-image"], "balloon-arch.jpg", {
+        type: "image/jpeg",
+      }),
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/photo-uploads",
+      payload: formData,
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(uploader).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      caption: "Balloon arch",
+      originalFileName: "balloon-arch.jpg",
+      mediaType: "image/jpeg",
+      fileBytes: expect.any(Uint8Array),
+    });
+  });
+
+  it("serves a prototype photo asset through the injected loader", async () => {
+    const app = await buildApp({
+      prototypePhotoAssetLoader: async () => ({
+        mediaType: "image/jpeg",
+        body: new Uint8Array([1, 2, 3]),
+      }),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/prototype/photos/photo-cake/asset",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/jpeg");
+  });
+
   it("returns 503 for the SweetBook prototype estimate endpoint when no runner is configured", async () => {
     const app = await buildApp();
     const response = await app.inject({

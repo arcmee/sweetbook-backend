@@ -1,3 +1,4 @@
+import multipart from "@fastify/multipart";
 import fastify, { type FastifyInstance } from "fastify";
 
 import { createPrototypeAuthService } from "../application/auth/prototype-auth-service";
@@ -16,6 +17,16 @@ export interface BuildAppOptions {
   prototypeEventCreator?: (input: { groupId: string; title: string }) => Promise<void>;
   prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
   prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
+  prototypePhotoUploader?: (input: {
+    eventId: string;
+    caption: string;
+    originalFileName: string;
+    mediaType: string;
+    fileBytes: Uint8Array;
+  }) => Promise<void>;
+  prototypePhotoAssetLoader?: (
+    photoId: string,
+  ) => Promise<{ body: Uint8Array; mediaType: string } | null>;
   prototypePhotoLikeAdder?: (input: { photoId: string; userId: string }) => Promise<void>;
   prototypeWorkspaceSnapshotLoader?: () => Promise<PrototypeWorkspaceSnapshot>;
   prototypeSweetBookEstimateRunner?: PrototypeSweetBookEstimateRunner;
@@ -26,6 +37,7 @@ export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
   const app = fastify({ logger: false });
+  await app.register(multipart);
   const authService = createPrototypeAuthService(options.prototypeAuthSessionStore);
 
   app.get("/health", async () => {
@@ -165,6 +177,58 @@ export async function buildApp(
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  app.post("/api/prototype/photo-uploads", async (request, reply) => {
+    if (!options.prototypePhotoUploader) {
+      return reply.code(503).send({
+        message: "Prototype photo uploader is not configured",
+      });
+    }
+
+    try {
+      const file = await request.file();
+      const eventId = `${file?.fields.eventId?.value ?? ""}`;
+      const caption = `${file?.fields.caption?.value ?? ""}`;
+
+      if (!file) {
+        throw new Error("Prototype photo file is required");
+      }
+
+      await options.prototypePhotoUploader({
+        eventId,
+        caption,
+        originalFileName: file.filename,
+        mediaType: file.mimetype,
+        fileBytes: await file.toBuffer(),
+      });
+      return reply.code(201).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.get("/api/prototype/photos/:photoId/asset", async (request, reply) => {
+    if (!options.prototypePhotoAssetLoader) {
+      return reply.code(404).send({
+        message: "Prototype photo asset was not found",
+      });
+    }
+
+    const params = request.params as {
+      photoId?: string;
+    };
+    const asset = await options.prototypePhotoAssetLoader(params.photoId ?? "");
+
+    if (!asset) {
+      return reply.code(404).send({
+        message: "Prototype photo asset was not found",
+      });
+    }
+
+    return reply.type(asset.mediaType).send(asset.body);
   });
 
   app.post("/api/prototype/photos/:photoId/likes", async (request, reply) => {

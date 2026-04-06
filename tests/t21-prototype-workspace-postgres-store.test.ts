@@ -71,6 +71,9 @@ describe("prototype workspace postgres store", () => {
             uploaded_by: "Mina",
             like_count: "12",
             liked_by_viewer: true,
+            original_file_name: null,
+            media_type: null,
+            storage_path: null,
           },
           {
             active_event_id: "event-birthday",
@@ -83,6 +86,9 @@ describe("prototype workspace postgres store", () => {
             uploaded_by: "Joon",
             like_count: "9",
             liked_by_viewer: false,
+            original_file_name: null,
+            media_type: null,
+            storage_path: null,
           },
         ],
       });
