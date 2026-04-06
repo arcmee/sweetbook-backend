@@ -11,6 +11,12 @@ export type EventCardSnapshot = {
   name: string;
   groupName: string;
   status: "draft" | "collecting" | "ready";
+  description?: string;
+  votingStartsAt?: string;
+  votingEndsAt?: string;
+  votingClosedManually?: boolean;
+  canVote?: boolean;
+  canOwnerSelectPhotos?: boolean;
   photoCount: number;
 };
 
@@ -77,8 +83,26 @@ export type OrderEntrySnapshot = {
   };
 };
 
+export type GroupMemberSnapshot = {
+  groupId: string;
+  userId: string;
+  displayName: string;
+  role: string;
+};
+
+export type PendingInvitationSnapshot = {
+  invitationId: string;
+  groupId: string;
+  groupName: string;
+  invitedUserId?: string;
+  invitedUserDisplayName?: string;
+  invitedByDisplayName: string;
+};
+
 export type PrototypeWorkspaceSnapshot = {
   workspace: WorkspaceSnapshot;
+  groupMembers?: GroupMemberSnapshot[];
+  pendingInvitations?: PendingInvitationSnapshot[];
   photoWorkflows: PhotoWorkflowSnapshot[];
   candidateReviews: CandidateReviewSnapshot[];
   orderEntries: OrderEntrySnapshot[];
@@ -111,6 +135,12 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "First birthday album",
       groupName: "Han family",
       status: "collecting",
+      description: "Collect the best first birthday moments before the family vote closes.",
+      votingStartsAt: "2026-04-01T09:00:00.000Z",
+      votingEndsAt: "2026-04-14T09:00:00.000Z",
+      votingClosedManually: false,
+      canVote: true,
+      canOwnerSelectPhotos: false,
       photoCount: 124,
     },
     {
@@ -118,12 +148,72 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "Winter holiday trip",
       groupName: "Park cousins",
       status: "draft",
+      description: "Prepare the holiday trip highlights before the cousins voting window opens.",
+      votingStartsAt: "2026-04-20T09:00:00.000Z",
+      votingEndsAt: "2026-04-30T09:00:00.000Z",
+      votingClosedManually: false,
+      canVote: false,
+      canOwnerSelectPhotos: false,
       photoCount: 36,
     },
   ],
 };
 
 const prototypeInteractionSnapshot = {
+  groupMembers: [
+    {
+      groupId: "group-han",
+      userId: "user-demo",
+      displayName: "SweetBook Demo User",
+      role: "Owner",
+    },
+    {
+      groupId: "group-han",
+      userId: "user-mina",
+      displayName: "Mina",
+      role: "Editor",
+    },
+    {
+      groupId: "group-han",
+      userId: "user-joon",
+      displayName: "Joon",
+      role: "Contributor",
+    },
+    {
+      groupId: "group-han",
+      userId: "user-ara",
+      displayName: "Ara",
+      role: "Contributor",
+    },
+    {
+      groupId: "group-park",
+      userId: "user-soo",
+      displayName: "Soo",
+      role: "Owner",
+    },
+    {
+      groupId: "group-park",
+      userId: "user-demo",
+      displayName: "SweetBook Demo User",
+      role: "Editor",
+    },
+    {
+      groupId: "group-park",
+      userId: "user-yuri",
+      displayName: "Yuri",
+      role: "Contributor",
+    },
+  ],
+  pendingInvitations: [
+    {
+      invitationId: "invite-kim",
+      groupId: "group-kim",
+      groupName: "Kim family moments",
+      invitedUserId: "user-demo",
+      invitedUserDisplayName: "SweetBook Demo User",
+      invitedByDisplayName: "Sena",
+    },
+  ],
   photoWorkflows: [
     {
       activeEventId: "event-birthday",
@@ -251,6 +341,8 @@ export function buildPrototypeWorkspaceSnapshot(
 ): PrototypeWorkspaceSnapshot {
   return {
     workspace,
+    groupMembers: prototypeInteractionSnapshot.groupMembers,
+    pendingInvitations: prototypeInteractionSnapshot.pendingInvitations,
     photoWorkflows: prototypeInteractionSnapshot.photoWorkflows,
     candidateReviews: prototypeInteractionSnapshot.candidateReviews,
     orderEntries: prototypeInteractionSnapshot.orderEntries,

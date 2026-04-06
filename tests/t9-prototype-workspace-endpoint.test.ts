@@ -189,6 +189,9 @@ describe("prototype workspace endpoint", () => {
       payload: {
         groupId: "group-han",
         title: "Second birthday album",
+        description: "Collect the best second birthday moments before the vote closes.",
+        votingStartsAt: "2026-04-10T09:00:00.000Z",
+        votingEndsAt: "2026-04-20T09:00:00.000Z",
       },
     });
 
@@ -196,6 +199,176 @@ describe("prototype workspace endpoint", () => {
     expect(creator).toHaveBeenCalledWith({
       groupId: "group-han",
       title: "Second birthday album",
+      description: "Collect the best second birthday moments before the vote closes.",
+      votingStartsAt: "2026-04-10T09:00:00.000Z",
+      votingEndsAt: "2026-04-20T09:00:00.000Z",
+    });
+  });
+
+  it("accepts a simple prototype password change", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/account/password",
+      payload: {
+        currentPassword: "sweetbook123!",
+        nextPassword: "sweetbook456!",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+  });
+
+  it("delegates the prototype user search endpoint to the injected searcher", async () => {
+    const searcher = vi.fn().mockResolvedValue([
+      {
+        userId: "user-haru",
+        username: "haru",
+        displayName: "Haru",
+      },
+    ]);
+    const app = await buildApp({
+      prototypeUserSearch: searcher,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/prototype/users/search?q=haru",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(searcher).toHaveBeenCalledWith({
+      query: "haru",
+    });
+  });
+
+  it("delegates the prototype group invite endpoint to the injected creator", async () => {
+    const inviteCreator = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeGroupInviteCreator: inviteCreator,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/groups/group-han/invitations",
+      payload: {
+        userId: "user-haru",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(inviteCreator).toHaveBeenCalledWith({
+      groupId: "group-han",
+      userId: "user-haru",
+    });
+  });
+
+  it("delegates the invitation accept and decline endpoints to the injected actions", async () => {
+    const accept = vi.fn().mockResolvedValue(undefined);
+    const decline = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeGroupInvitationAcceptor: accept,
+      prototypeGroupInvitationDecliner: decline,
+    });
+
+    const acceptResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/invitations/invite-kim/accept",
+      payload: {
+        userId: "user-demo",
+      },
+    });
+    const declineResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/invitations/invite-kim/decline",
+      payload: {
+        userId: "user-demo",
+      },
+    });
+
+    expect(acceptResponse.statusCode).toBe(200);
+    expect(declineResponse.statusCode).toBe(200);
+    expect(accept).toHaveBeenCalledWith({
+      invitationId: "invite-kim",
+      userId: "user-demo",
+    });
+    expect(decline).toHaveBeenCalledWith({
+      invitationId: "invite-kim",
+      userId: "user-demo",
+    });
+  });
+
+  it("delegates the prototype owner transfer endpoint to the injected transfer action", async () => {
+    const transfer = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeOwnerTransfer: transfer,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/groups/group-han/owner",
+      payload: {
+        nextOwnerUserId: "user-mina",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(transfer).toHaveBeenCalledWith({
+      groupId: "group-han",
+      nextOwnerUserId: "user-mina",
+    });
+  });
+
+  it("delegates the prototype group leave endpoint to the injected leave action", async () => {
+    const leaveAction = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeGroupLeaveAction: leaveAction,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/groups/group-han/leave",
+      payload: {
+        userId: "user-demo",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(leaveAction).toHaveBeenCalledWith({
+      groupId: "group-han",
+      userId: "user-demo",
+    });
+  });
+
+  it("delegates the prototype event voting close endpoint to the injected closer", async () => {
+    const closer = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeEventVotingCloser: closer,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/close-voting",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(closer).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+    });
+  });
+
+  it("delegates the prototype event voting extend endpoint to the injected extender", async () => {
+    const extender = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeEventVotingExtender: extender,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/extend-voting",
+      payload: {
+        votingEndsAt: "2026-04-21T09:00:00.000Z",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(extender).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      votingEndsAt: "2026-04-21T09:00:00.000Z",
     });
   });
 
