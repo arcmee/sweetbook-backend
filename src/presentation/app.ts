@@ -1,10 +1,14 @@
 import fastify, { type FastifyInstance } from "fastify";
 
 import { getPrototypeWorkspaceSnapshot } from "../application/prototype-workspace-snapshot";
-import type { PrototypeSweetBookEstimateRunner } from "../application/prototype-sweetbook-estimate";
+import type {
+  PrototypeSweetBookEstimateRunner,
+  PrototypeSweetBookSubmitRunner,
+} from "../application/prototype-sweetbook-estimate";
 
 export interface BuildAppOptions {
   prototypeSweetBookEstimateRunner?: PrototypeSweetBookEstimateRunner;
+  prototypeSweetBookSubmitRunner?: PrototypeSweetBookSubmitRunner;
 }
 
 export async function buildApp(
@@ -28,6 +32,17 @@ export async function buildApp(
     }
 
     const result = await options.prototypeSweetBookEstimateRunner();
+    return reply.code(200).send(result);
+  });
+
+  app.post("/api/prototype/sweetbook/submit", async (_, reply) => {
+    if (!options.prototypeSweetBookSubmitRunner) {
+      return reply.code(503).send({
+        message: "SweetBook prototype submit runner is not configured",
+      });
+    }
+
+    const result = await options.prototypeSweetBookSubmitRunner();
     return reply.code(200).send(result);
   });
 

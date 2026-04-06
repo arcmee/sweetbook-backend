@@ -63,4 +63,54 @@ describe("prototype workspace endpoint", () => {
       pageCount: 24,
     });
   });
+
+  it("returns 503 for the SweetBook prototype submit endpoint when no runner is configured", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/sweetbook/submit",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      message: "SweetBook prototype submit runner is not configured",
+    });
+  });
+
+  it("delegates the SweetBook prototype submit endpoint to the injected runner", async () => {
+    const app = await buildApp({
+      prototypeSweetBookSubmitRunner: async () => ({
+        status: "submitted",
+        bookUid: "bk_123",
+        uploadedPhotoFileName: "photo-1.jpg",
+        pageCount: 24,
+        contentInsertions: [],
+        estimate: {
+          totalAmount: 3100,
+          paidCreditAmount: 3100,
+          creditBalance: 5000,
+          creditSufficient: true,
+          currency: "KRW",
+        },
+        order: {
+          orderUid: "ord_1",
+          orderStatus: 20,
+          orderStatusDisplay: "결제완료",
+        },
+      }),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/sweetbook/submit",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "submitted",
+      bookUid: "bk_123",
+      order: {
+        orderUid: "ord_1",
+      },
+    });
+  });
 });
