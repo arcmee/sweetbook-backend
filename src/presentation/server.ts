@@ -1,4 +1,5 @@
 import { createPrototypeSweetBookEstimateRunner } from "../application/prototype-sweetbook-estimate";
+import { createPrototypeSweetBookSubmitRunner } from "../application/prototype-sweetbook-estimate";
 import { loadLocalEnv } from "../data/local-env-loader";
 import { resolveSweetBookApiConfig } from "../data/sweetbook-api-config";
 import { createSweetBookReadApiClient } from "../data/sweetbook-read-api-client";
@@ -11,8 +12,10 @@ async function main(): Promise<void> {
   loadLocalEnv();
 
   const prototypeSweetBookEstimateRunner = createConfiguredEstimateRunner();
+  const prototypeSweetBookSubmitRunner = createConfiguredSubmitRunner();
   const app = await buildApp({
     prototypeSweetBookEstimateRunner,
+    prototypeSweetBookSubmitRunner,
   });
   const port = Number.parseInt(process.env.PORT ?? `${DEFAULT_PORT}`, 10);
   const host = process.env.HOST ?? "0.0.0.0";
@@ -30,6 +33,21 @@ function createConfiguredEstimateRunner() {
   const writeClient = createSweetBookWriteApiClient(config);
 
   return createPrototypeSweetBookEstimateRunner({
+    readClient,
+    writeClient,
+  });
+}
+
+function createConfiguredSubmitRunner() {
+  if (!process.env.SWEETBOOK_API_KEY) {
+    return undefined;
+  }
+
+  const config = resolveSweetBookApiConfig(process.env);
+  const readClient = createSweetBookReadApiClient(config);
+  const writeClient = createSweetBookWriteApiClient(config);
+
+  return createPrototypeSweetBookSubmitRunner({
     readClient,
     writeClient,
   });

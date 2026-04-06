@@ -5,6 +5,8 @@ import type {
   SweetBookClient,
   SweetBookContentsUploadResult,
   SweetBookOrderEstimateResult,
+  SweetBookOrderResult,
+  SweetBookShippingAddressInput,
 } from "./ports/sweetbook-client";
 
 const COVER_TEMPLATE_UID = "4MY2fokVjkeY";
@@ -28,6 +30,23 @@ export interface PrototypeSweetBookEstimateResult {
 export type PrototypeSweetBookEstimateRunner =
   () => Promise<PrototypeSweetBookEstimateResult>;
 
+export interface PrototypeSweetBookSubmitResult {
+  status: "submitted";
+  bookUid: string;
+  uploadedPhotoFileName: string;
+  pageCount: number;
+  contentInsertions: Array<
+    SweetBookContentsUploadResult & {
+      attempt: number;
+    }
+  >;
+  estimate: SweetBookOrderEstimateResult;
+  order: SweetBookOrderResult;
+}
+
+export type PrototypeSweetBookSubmitRunner =
+  () => Promise<PrototypeSweetBookSubmitResult>;
+
 export interface PrototypeSweetBookEstimateServiceDependencies {
   readClient: SweetBookReadClient;
   writeClient: SweetBookClient;
@@ -40,81 +59,132 @@ export function createPrototypeSweetBookEstimateRunner(
   const now = dependencies.now ?? Date.now;
 
   return async () => {
-    const createdBook = await dependencies.writeClient.createBook({
-      title: `SweetBook Prototype Estimate ${new Date(now()).toISOString()}`,
-      bookSpecUid: BOOK_SPEC_UID,
-      idempotencyKey: `prototype-estimate-book-${now()}`,
-    });
-
-    await dependencies.writeClient.uploadCover({
-      bookUid: createdBook.bookUid,
-      templateUid: COVER_TEMPLATE_UID,
-      parameters: {
-        dateRange: "2026.04",
-        spineTitle: "SweetBook Prototype",
-      },
-      frontPhoto: createBmpPart("prototype-cover.bmp", 1200, 1200),
-    });
-
-    const uploadedPhoto = await dependencies.writeClient.uploadPhoto({
-      bookUid: createdBook.bookUid,
-      file: createBmpPart("prototype-photo.bmp", 1200, 1200),
-    });
-
-    const contentInsertions: PrototypeSweetBookEstimateResult["contentInsertions"] =
-      [];
-
-    let lastContentResult: SweetBookContentsUploadResult | undefined;
-    for (let attempt = 1; attempt <= TARGET_PAGE_COUNT; attempt += 1) {
-      const contentResult = await dependencies.writeClient.uploadContents({
-        bookUid: createdBook.bookUid,
-        templateUid: CONTENT_TEMPLATE_UID,
-        breakBefore: "page",
-        parameters: createContentParameters(uploadedPhoto.fileName),
-      });
-
-      contentInsertions.push({
-        attempt,
-        ...contentResult,
-      });
-      lastContentResult = contentResult;
-
-      if ((contentResult.pageCount ?? 0) >= TARGET_PAGE_COUNT) {
-        break;
-      }
-    }
-
-    const pageCount = lastContentResult?.pageCount ?? 0;
-    if (pageCount < TARGET_PAGE_COUNT) {
-      throw new Error(
-        `SweetBook content loop did not reach minimum pages (last pageCount=${pageCount})`,
-      );
-    }
-
-    await dependencies.writeClient.finalizeBook({
-      bookUid: createdBook.bookUid,
-    });
-
-    const estimate = await dependencies.writeClient.estimateOrder({
-      items: [
-        {
-          bookUid: createdBook.bookUid,
-          quantity: 1,
-        },
-      ],
-    });
+    const prepared = await preparePrototypeSweetBookOrder(dependencies, now);
 
     return {
       status:
-        estimate.creditSufficient === false
+        prepared.estimate.creditSufficient === false
           ? "blocked_insufficient_credit"
           : "ready_for_order",
-      bookUid: createdBook.bookUid,
-      uploadedPhotoFileName: uploadedPhoto.fileName,
-      pageCount,
-      contentInsertions,
-      estimate,
+      bookUid: prepared.bookUid,
+      uploadedPhotoFileName: prepared.uploadedPhotoFileName,
+      pageCount: prepared.pageCount,
+      contentInsertions: prepared.contentInsertions,
+      estimate: prepared.estimate,
     };
+  };
+}
+
+export function createPrototypeSweetBookSubmitRunner(
+  dependencies: PrototypeSweetBookEstimateServiceDependencies,
+): PrototypeSweetBookSubmitRunner {
+  const now = dependencies.now ?? Date.now;
+
+  return async () => {
+    const prepared = await preparePrototypeSweetBookOrder(dependencies, now);
+
+    if (prepared.estimate.creditSufficient === false) {
+      throw new Error("SweetBook credits are insufficient for order submission");
+    }
+
+    const order = await dependencies.writeClient.submitOrder({
+      items: [
+        {
+          bookUid: prepared.bookUid,
+          quantity: 1,
+        },
+      ],
+      shipping: createPrototypeShippingAddress(),
+      externalRef: `prototype-submit-${now()}`,
+      idempotencyKey: `prototype-submit-order-${now()}`,
+    });
+
+    return {
+      status: "submitted",
+      bookUid: prepared.bookUid,
+      uploadedPhotoFileName: prepared.uploadedPhotoFileName,
+      pageCount: prepared.pageCount,
+      contentInsertions: prepared.contentInsertions,
+      estimate: prepared.estimate,
+      order,
+    };
+  };
+}
+
+async function preparePrototypeSweetBookOrder(
+  dependencies: PrototypeSweetBookEstimateServiceDependencies,
+  now: () => number,
+) {
+  const createdBook = await dependencies.writeClient.createBook({
+    title: `SweetBook Prototype Estimate ${new Date(now()).toISOString()}`,
+    bookSpecUid: BOOK_SPEC_UID,
+    idempotencyKey: `prototype-estimate-book-${now()}`,
+  });
+
+  await dependencies.writeClient.uploadCover({
+    bookUid: createdBook.bookUid,
+    templateUid: COVER_TEMPLATE_UID,
+    parameters: {
+      dateRange: "2026.04",
+      spineTitle: "SweetBook Prototype",
+    },
+    frontPhoto: createBmpPart("prototype-cover.bmp", 1200, 1200),
+  });
+
+  const uploadedPhoto = await dependencies.writeClient.uploadPhoto({
+    bookUid: createdBook.bookUid,
+    file: createBmpPart("prototype-photo.bmp", 1200, 1200),
+  });
+
+  const contentInsertions: PrototypeSweetBookEstimateResult["contentInsertions"] =
+    [];
+
+  let lastContentResult: SweetBookContentsUploadResult | undefined;
+  for (let attempt = 1; attempt <= TARGET_PAGE_COUNT; attempt += 1) {
+    const contentResult = await dependencies.writeClient.uploadContents({
+      bookUid: createdBook.bookUid,
+      templateUid: CONTENT_TEMPLATE_UID,
+      breakBefore: "page",
+      parameters: createContentParameters(uploadedPhoto.fileName),
+    });
+
+    contentInsertions.push({
+      attempt,
+      ...contentResult,
+    });
+    lastContentResult = contentResult;
+
+    if ((contentResult.pageCount ?? 0) >= TARGET_PAGE_COUNT) {
+      break;
+    }
+  }
+
+  const pageCount = lastContentResult?.pageCount ?? 0;
+  if (pageCount < TARGET_PAGE_COUNT) {
+    throw new Error(
+      `SweetBook content loop did not reach minimum pages (last pageCount=${pageCount})`,
+    );
+  }
+
+  await dependencies.writeClient.finalizeBook({
+    bookUid: createdBook.bookUid,
+  });
+
+  const estimate = await dependencies.writeClient.estimateOrder({
+    items: [
+      {
+        bookUid: createdBook.bookUid,
+        quantity: 1,
+      },
+    ],
+  });
+
+  return {
+    bookUid: createdBook.bookUid,
+    uploadedPhotoFileName: uploadedPhoto.fileName,
+    pageCount,
+    contentInsertions,
+    estimate,
   };
 }
 
@@ -152,6 +222,17 @@ function createContentParameters(photoFileName: string) {
     parentComment: "",
     teacherComment: "",
     photos: [photoFileName],
+  };
+}
+
+function createPrototypeShippingAddress(): SweetBookShippingAddressInput {
+  return {
+    recipientName: "SweetBook Tester",
+    recipientPhone: "010-1234-5678",
+    postalCode: "06236",
+    address1: "Seoul Test Road 123",
+    address2: "Suite 4",
+    memo: "prototype-submit",
   };
 }
 
