@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresPool } from "../src/data/postgres-pool";
 import {
+  createPrototypePhotoCreator,
+  createPrototypePhotoLikeAdder,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
   seedPrototypeWorkspaceStore,
@@ -16,6 +18,9 @@ describe("prototype workspace postgres integration", () => {
 
   beforeAll(async () => {
     await initializePrototypeWorkspaceStore(pool);
+    await pool.query("DELETE FROM prototype_photo_likes");
+    await pool.query("DELETE FROM prototype_photos");
+    await pool.query("DELETE FROM prototype_photo_workflows");
     await pool.query("DELETE FROM prototype_events");
     await pool.query("DELETE FROM prototype_group_memberships");
     await pool.query("DELETE FROM prototype_groups");
@@ -23,6 +28,9 @@ describe("prototype workspace postgres integration", () => {
   });
 
   afterAll(async () => {
+    await pool.query("DELETE FROM prototype_photo_likes");
+    await pool.query("DELETE FROM prototype_photos");
+    await pool.query("DELETE FROM prototype_photo_workflows");
     await pool.query("DELETE FROM prototype_events");
     await pool.query("DELETE FROM prototype_group_memberships");
     await pool.query("DELETE FROM prototype_groups");
@@ -46,5 +54,36 @@ describe("prototype workspace postgres integration", () => {
     expect(payload.workspace.groupSummary.totalMembers).toBe(7);
     expect(payload.workspace.groups[0]?.name).toBe("Han family");
     expect(payload.workspace.events[0]?.name).toBe("First birthday album");
+  });
+
+  it("recomputes candidate review and order summaries after photo and like writes", async () => {
+    const createPhoto = createPrototypePhotoCreator(pool);
+    const addLike = createPrototypePhotoLikeAdder(pool);
+    const loadSnapshot = createPrototypeWorkspaceSnapshotLoader(pool);
+
+    await createPhoto({
+      eventId: "event-holiday",
+      caption: "Balloon arch",
+    });
+    await addLike({
+      photoId: "photo-created-5",
+      userId: "user-demo",
+    });
+
+    const snapshot = await loadSnapshot();
+    const holidayReview = snapshot.candidateReviews.find(
+      (review) => review.activeEventId === "event-holiday",
+    );
+    const holidayOrderEntry = snapshot.orderEntries.find(
+      (entry) => entry.activeEventId === "event-holiday",
+    );
+
+    expect(holidayReview?.candidates.some((candidate) => candidate.caption === "Balloon arch")).toBe(
+      true,
+    );
+    expect(
+      holidayOrderEntry?.selectedCandidateCount,
+    ).toBe(holidayReview?.candidates.length);
+    expect(holidayReview?.pagePreview[0]?.title).toBe("Cover preview");
   });
 });
