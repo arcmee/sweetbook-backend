@@ -29,6 +29,9 @@ export type PhotoCardSnapshot = {
   uploadedBy: string;
   likeCount: number;
   likedByViewer: boolean;
+  assetUrl?: string;
+  assetFileName?: string;
+  mediaType?: string;
 };
 
 export type PhotoWorkflowSnapshot = {
@@ -137,6 +140,9 @@ const prototypeInteractionSnapshot = {
           uploadedBy: "Mina",
           likeCount: 12,
           likedByViewer: true,
+          assetUrl: "/api/prototype/photos/photo-cake/asset",
+          assetFileName: "cake-table-setup.jpg",
+          mediaType: "image/jpeg",
         },
         {
           id: "photo-family",
@@ -144,6 +150,9 @@ const prototypeInteractionSnapshot = {
           uploadedBy: "Joon",
           likeCount: 9,
           likedByViewer: false,
+          assetUrl: "/api/prototype/photos/photo-family/asset",
+          assetFileName: "family-portrait.jpg",
+          mediaType: "image/jpeg",
         },
         {
           id: "photo-gift",
@@ -151,6 +160,9 @@ const prototypeInteractionSnapshot = {
           uploadedBy: "Ara",
           likeCount: 7,
           likedByViewer: true,
+          assetUrl: "/api/prototype/photos/photo-gift/asset",
+          assetFileName: "gift-opening-moment.jpg",
+          mediaType: "image/jpeg",
         },
       ],
     },
@@ -169,6 +181,9 @@ const prototypeInteractionSnapshot = {
           uploadedBy: "Soo",
           likeCount: 4,
           likedByViewer: false,
+          assetUrl: "/api/prototype/photos/photo-cabin/asset",
+          assetFileName: "cabin-arrival.jpg",
+          mediaType: "image/jpeg",
         },
       ],
     },

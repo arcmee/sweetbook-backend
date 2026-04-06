@@ -13,6 +13,10 @@ import {
   type PhotoWorkflowSnapshot,
   type PrototypeWorkspaceSnapshot,
 } from "../application/prototype-workspace-snapshot";
+import {
+  loadPrototypePhotoAsset,
+  savePrototypePhotoAsset,
+} from "./prototype-photo-local-file-store";
 
 type GroupRow = {
   id: string;
@@ -41,32 +45,9 @@ type PhotoWorkflowRow = {
   uploaded_by: string;
   like_count: string;
   liked_by_viewer: boolean;
-};
-
-type CandidateRow = {
-  active_event_id: string;
-  active_event_name: string;
-  photo_id: string;
-  caption: string;
-  rank: string;
-  like_count: string;
-  why_selected: string;
-};
-
-type PagePreviewRow = {
-  active_event_id: string;
-  page_number: string;
-  title: string;
-  photo_caption: string;
-};
-
-type OrderEntryRow = {
-  active_event_id: string;
-  active_event_name: string;
-  selected_candidate_count: string;
-  book_format: string;
-  note: string;
-  payload_section: string;
+  original_file_name: string | null;
+  media_type: string | null;
+  storage_path: string | null;
 };
 
 const PROTOTYPE_VIEWER_ID = "user-demo";
@@ -122,6 +103,15 @@ export async function initializePrototypeWorkspaceStore(
       liked_by_viewer BOOLEAN NOT NULL DEFAULT FALSE
     )
   `);
+  await pool.query(
+    "ALTER TABLE prototype_photos ADD COLUMN IF NOT EXISTS original_file_name TEXT",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_photos ADD COLUMN IF NOT EXISTS media_type TEXT",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_photos ADD COLUMN IF NOT EXISTS storage_path TEXT",
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS prototype_photo_likes (
@@ -250,9 +240,12 @@ export async function seedPrototypeWorkspaceStore(
             caption,
             uploaded_by,
             like_count,
-            liked_by_viewer
+            liked_by_viewer,
+            original_file_name,
+            media_type,
+            storage_path
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (id) DO NOTHING
         `,
         [
@@ -262,6 +255,9 @@ export async function seedPrototypeWorkspaceStore(
           photo.uploadedBy,
           photo.likeCount,
           photo.likedByViewer,
+          null,
+          null,
+          null,
         ],
       );
 
@@ -418,7 +414,10 @@ export function createPrototypeWorkspaceSnapshotLoader(
           p.caption,
           p.uploaded_by,
           p.like_count::text,
-          p.liked_by_viewer
+          p.liked_by_viewer,
+          p.original_file_name,
+          p.media_type,
+          p.storage_path
         FROM prototype_photo_workflows w
         INNER JOIN prototype_events e
           ON e.id = w.event_id
@@ -464,6 +463,11 @@ export function createPrototypeWorkspaceSnapshotLoader(
                   uploadedBy: row.uploaded_by,
                   likeCount: Number.parseInt(row.like_count, 10),
                   likedByViewer: row.liked_by_viewer,
+                  assetUrl: row.storage_path
+                    ? `/api/prototype/photos/${row.photo_id}/asset`
+                    : undefined,
+                  assetFileName: row.original_file_name ?? undefined,
+                  mediaType: row.media_type ?? undefined,
                 },
               ]
             : [],
@@ -478,6 +482,11 @@ export function createPrototypeWorkspaceSnapshotLoader(
           uploadedBy: row.uploaded_by,
           likeCount: Number.parseInt(row.like_count, 10),
           likedByViewer: row.liked_by_viewer,
+          assetUrl: row.storage_path
+            ? `/api/prototype/photos/${row.photo_id}/asset`
+            : undefined,
+          assetFileName: row.original_file_name ?? undefined,
+          mediaType: row.media_type ?? undefined,
         });
       }
     }
@@ -617,11 +626,108 @@ export function createPrototypePhotoCreator(
           caption,
           uploaded_by,
           like_count,
-          liked_by_viewer
+          liked_by_viewer,
+          original_file_name,
+          media_type,
+          storage_path
         )
-        VALUES ($1, $2, $3, 'SweetBook Demo User', 0, FALSE)
+        VALUES ($1, $2, $3, 'SweetBook Demo User', 0, FALSE, NULL, NULL, NULL)
       `,
       [nextPhotoId, eventId, caption],
+    );
+
+    await pool.query(
+      `
+        UPDATE prototype_photo_workflows
+        SET uploaded_count = uploaded_count + 1
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+
+    await pool.query(
+      `
+        UPDATE prototype_events
+        SET photo_count = photo_count + 1
+        WHERE id = $1
+      `,
+      [eventId],
+    );
+  };
+}
+
+export function createPrototypePhotoUploader(
+  pool: Pick<Pool, "query">,
+  options: { uploadDirectory: string },
+): (input: {
+  eventId: string;
+  caption: string;
+  originalFileName: string;
+  mediaType: string;
+  fileBytes: Uint8Array;
+}) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const caption = input.caption.trim();
+    const originalFileName = input.originalFileName.trim();
+    const mediaType = input.mediaType.trim();
+
+    if (!eventId) {
+      throw new Error("Prototype photo event id is required");
+    }
+
+    if (!caption) {
+      throw new Error("Prototype photo caption is required");
+    }
+
+    if (!originalFileName) {
+      throw new Error("Prototype photo file name is required");
+    }
+
+    if (!mediaType.startsWith("image/")) {
+      throw new Error("Prototype photo uploads must be image files");
+    }
+
+    if (input.fileBytes.byteLength === 0) {
+      throw new Error("Prototype photo file is empty");
+    }
+
+    const result = await pool.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM prototype_photos",
+    );
+    const nextCount = Number.parseInt(result.rows[0]?.count ?? "0", 10) + 1;
+    const nextPhotoId = `photo-created-${nextCount}`;
+    const storedAsset = await savePrototypePhotoAsset({
+      uploadDirectory: options.uploadDirectory,
+      photoId: nextPhotoId,
+      originalFileName,
+      mediaType,
+      fileBytes: input.fileBytes,
+    });
+
+    await pool.query(
+      `
+        INSERT INTO prototype_photos (
+          id,
+          event_id,
+          caption,
+          uploaded_by,
+          like_count,
+          liked_by_viewer,
+          original_file_name,
+          media_type,
+          storage_path
+        )
+        VALUES ($1, $2, $3, 'SweetBook Demo User', 0, FALSE, $4, $5, $6)
+      `,
+      [
+        nextPhotoId,
+        eventId,
+        caption,
+        storedAsset.originalFileName,
+        storedAsset.mediaType,
+        storedAsset.storagePath,
+      ],
     );
 
     await pool.query(
@@ -683,6 +789,39 @@ export function createPrototypePhotoLikeAdder(
       `,
       [photoId, userId, PROTOTYPE_VIEWER_ID],
     );
+  };
+}
+
+export function createPrototypePhotoAssetLoader(
+  pool: Pick<Pool, "query">,
+): (photoId: string) => Promise<{ body: Uint8Array; mediaType: string } | null> {
+  return async (photoId) => {
+    const normalizedPhotoId = photoId.trim();
+    if (!normalizedPhotoId) {
+      return null;
+    }
+
+    const result = await pool.query<{
+      media_type: string | null;
+      storage_path: string | null;
+    }>(
+      `
+        SELECT media_type, storage_path
+        FROM prototype_photos
+        WHERE id = $1
+      `,
+      [normalizedPhotoId],
+    );
+
+    const row = result.rows[0];
+    if (!row?.storage_path || !row.media_type) {
+      return null;
+    }
+
+    return {
+      body: await loadPrototypePhotoAsset(row.storage_path),
+      mediaType: row.media_type,
+    };
   };
 }
 

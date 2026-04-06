@@ -18,6 +18,7 @@
     "vitest": "^3.1.2"
   },
   "dependencies": {
+    "@fastify/multipart": "^9.4.0",
     "@types/pg": "^8.20.0",
     "fastify": "^5.3.3",
     "pg": "^8.20.0"
