@@ -15,6 +15,8 @@ export interface BuildAppOptions {
   prototypeAuthSessionStore?: PrototypeAuthSessionStore;
   prototypeEventCreator?: (input: { groupId: string; title: string }) => Promise<void>;
   prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
+  prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
+  prototypePhotoLikeAdder?: (input: { photoId: string; userId: string }) => Promise<void>;
   prototypeWorkspaceSnapshotLoader?: () => Promise<PrototypeWorkspaceSnapshot>;
   prototypeSweetBookEstimateRunner?: PrototypeSweetBookEstimateRunner;
   prototypeSweetBookSubmitRunner?: PrototypeSweetBookSubmitRunner;
@@ -131,6 +133,58 @@ export async function buildApp(
       await options.prototypeEventCreator({
         groupId: body.groupId ?? "",
         title: body.title ?? "",
+      });
+      return reply.code(201).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/photos", async (request, reply) => {
+    if (!options.prototypePhotoCreator) {
+      return reply.code(503).send({
+        message: "Prototype photo creator is not configured",
+      });
+    }
+
+    const body = (request.body ?? {}) as {
+      eventId?: string;
+      caption?: string;
+    };
+
+    try {
+      await options.prototypePhotoCreator({
+        eventId: body.eventId ?? "",
+        caption: body.caption ?? "",
+      });
+      return reply.code(201).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/photos/:photoId/likes", async (request, reply) => {
+    if (!options.prototypePhotoLikeAdder) {
+      return reply.code(503).send({
+        message: "Prototype photo like adder is not configured",
+      });
+    }
+
+    const params = request.params as {
+      photoId?: string;
+    };
+    const body = (request.body ?? {}) as {
+      userId?: string;
+    };
+
+    try {
+      await options.prototypePhotoLikeAdder({
+        photoId: params.photoId ?? "",
+        userId: body.userId ?? "",
       });
       return reply.code(201).send();
     } catch (error: unknown) {

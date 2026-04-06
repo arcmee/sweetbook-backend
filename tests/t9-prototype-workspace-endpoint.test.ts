@@ -199,6 +199,47 @@ describe("prototype workspace endpoint", () => {
     });
   });
 
+  it("delegates the prototype photo creation endpoint to the injected creator", async () => {
+    const creator = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypePhotoCreator: creator,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/photos",
+      payload: {
+        eventId: "event-birthday",
+        caption: "Cake table setup",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(creator).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      caption: "Cake table setup",
+    });
+  });
+
+  it("delegates the prototype photo like endpoint to the injected adder", async () => {
+    const adder = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypePhotoLikeAdder: adder,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/photos/photo-cake/likes",
+      payload: {
+        userId: "user-demo",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(adder).toHaveBeenCalledWith({
+      photoId: "photo-cake",
+      userId: "user-demo",
+    });
+  });
+
   it("returns 503 for the SweetBook prototype estimate endpoint when no runner is configured", async () => {
     const app = await buildApp();
     const response = await app.inject({

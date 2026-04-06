@@ -10,6 +10,8 @@ import { createPostgresPool } from "../data/postgres-pool";
 import {
   createPrototypeEventCreator,
   createPrototypeGroupCreator,
+  createPrototypePhotoCreator,
+  createPrototypePhotoLikeAdder,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
   seedPrototypeWorkspaceStore,
@@ -31,6 +33,8 @@ async function main(): Promise<void> {
     prototypeAuthSessionStore: persistence?.prototypeAuthSessionStore,
     prototypeEventCreator: persistence?.prototypeEventCreator,
     prototypeGroupCreator: persistence?.prototypeGroupCreator,
+    prototypePhotoCreator: persistence?.prototypePhotoCreator,
+    prototypePhotoLikeAdder: persistence?.prototypePhotoLikeAdder,
     prototypeWorkspaceSnapshotLoader: persistence?.prototypeWorkspaceSnapshotLoader,
     prototypeSweetBookEstimateRunner,
     prototypeSweetBookSubmitRunner,
@@ -56,6 +60,8 @@ async function createConfiguredPersistence() {
     prototypeAuthSessionStore: createPrototypeAuthSessionPostgresStore(pool),
     prototypeEventCreator: createPrototypeEventCreator(pool),
     prototypeGroupCreator: createPrototypeGroupCreator(pool),
+    prototypePhotoCreator: createPrototypePhotoCreator(pool),
+    prototypePhotoLikeAdder: createPrototypePhotoLikeAdder(pool),
     prototypeWorkspaceSnapshotLoader: createPrototypeWorkspaceSnapshotLoader(pool),
   };
 }
