@@ -2,7 +2,6 @@ import multipart from "@fastify/multipart";
 import fastify, { type FastifyInstance } from "fastify";
 
 import { createPrototypeAuthService } from "../application/auth/prototype-auth-service";
-import type { PrototypeAuthSessionStore } from "../application/auth/prototype-auth-session-store";
 import {
   getPrototypeWorkspaceSnapshot,
   type PrototypeWorkspaceSnapshot,
@@ -13,7 +12,6 @@ import type {
 } from "../application/prototype-sweetbook-estimate";
 
 export interface BuildAppOptions {
-  prototypeAuthSessionStore?: PrototypeAuthSessionStore;
   prototypeGroupInviteCreator?: (input: { groupId: string; userId: string }) => Promise<void>;
   prototypeGroupInvitationAcceptor?: (input: { invitationId: string; userId: string }) => Promise<void>;
   prototypeGroupInvitationDecliner?: (input: { invitationId: string; userId: string }) => Promise<void>;
@@ -82,7 +80,7 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   const app = fastify({ logger: false });
   await app.register(multipart);
-  const authService = createPrototypeAuthService(options.prototypeAuthSessionStore);
+  const authService = createPrototypeAuthService();
 
   app.get("/health", async () => {
     return { status: "ok" };
@@ -109,17 +107,22 @@ export async function buildApp(
   });
 
   app.get("/api/prototype/auth/session", async (request, reply) => {
+    const authorizationHeader = request.headers.authorization;
     const query = request.query as {
       token?: string;
     };
+    const bearerToken = authorizationHeader?.startsWith("Bearer ")
+      ? authorizationHeader.slice("Bearer ".length).trim()
+      : undefined;
+    const token = bearerToken ?? query.token;
 
-    if (!query.token) {
+    if (!token) {
       return reply.code(401).send({
         message: "Prototype auth token is required",
       });
     }
 
-    const session = await authService.getSession(query.token);
+    const session = await authService.getSession(token);
 
     if (!session) {
       return reply.code(401).send({
@@ -131,13 +134,7 @@ export async function buildApp(
   });
 
   app.post("/api/prototype/auth/logout", async (request, reply) => {
-    const body = (request.body ?? {}) as {
-      token?: string;
-    };
-
-    if (body.token) {
-      await authService.logout(body.token);
-    }
+    await authService.logout();
 
     return reply.code(204).send();
   });
