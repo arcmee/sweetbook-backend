@@ -108,6 +108,19 @@ export type OrderEntrySnapshot = {
     bookFormat: string;
     payloadSections: string[];
     note: string;
+    coverCaption?: string;
+    selectedPhotoCount: number;
+    spreadCount: number;
+    draftPayloadPageCount: number;
+    plannerPages: Array<{
+      pageId: string;
+      title: string;
+      layout: string;
+      note: string;
+      photoCount: number;
+      photoCaptions: string[];
+      warning: string | null;
+    }>;
   };
 };
 
@@ -399,6 +412,30 @@ const prototypeInteractionSnapshot = {
         bookFormat: "Hardcover square",
         payloadSections: ["selected photos", "page preview", "event title"],
         note: "Review this summary before backend submission is wired.",
+        coverCaption: "Cake table setup",
+        selectedPhotoCount: 3,
+        spreadCount: 1,
+        draftPayloadPageCount: 2,
+        plannerPages: [
+          {
+            pageId: "cover",
+            title: "Cover handoff",
+            layout: "Full-bleed cover",
+            note: "Lead with the strongest event-defining moment on the cover.",
+            photoCount: 1,
+            photoCaptions: ["Cake table setup"],
+            warning: null,
+          },
+          {
+            pageId: "spread-1",
+            title: "Spread 1",
+            layout: "Balanced two-photo spread",
+            note: "Use this spread to balance detail shots with group moments.",
+            photoCount: 2,
+            photoCaptions: ["Family portrait", "Gift opening moment"],
+            warning: null,
+          },
+        ],
       },
     },
   ],

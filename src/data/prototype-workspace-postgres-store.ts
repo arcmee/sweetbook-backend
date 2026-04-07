@@ -1772,6 +1772,14 @@ function buildOrderEntrySnapshot(
         (selectedPhotoCount > 0
           ? "Review this summary before backend submission is wired."
           : "Add more liked photos to prepare a stronger SweetBook handoff."),
+      coverCaption: pageDrafts[0]?.photoCaptions[0],
+      selectedPhotoCount,
+      spreadCount: Math.max(
+        0,
+        pageDrafts.length - (pageDrafts.some((page) => page.pageId === "cover") ? 1 : 0),
+      ),
+      draftPayloadPageCount: pageDrafts.length,
+      plannerPages: pageDrafts,
     },
   };
 }
@@ -1805,6 +1813,12 @@ function buildPlannerPageDrafts(
   photos: PhotoCardSnapshot[],
   pagePlanner: OrderEntrySnapshot["pagePlanner"],
 ): Array<{
+  pageId: string;
+  title: string;
+  layout: string;
+  note: string;
+  photoCount: number;
+  photoCaptions: string[];
   warning: string | null;
 }> {
   const selectedPhotos = pagePlanner.selectedPhotoIds
@@ -1814,6 +1828,12 @@ function buildPlannerPageDrafts(
     selectedPhotos.find((photo) => photo.id === pagePlanner.coverPhotoId) ?? selectedPhotos[0];
   const spreadPhotos = selectedPhotos.filter((photo) => photo.id !== coverPhoto?.id);
   const pages: Array<{
+    pageId: string;
+    title: string;
+    layout: string;
+    note: string;
+    photoCount: number;
+    photoCaptions: string[];
     warning: string | null;
   }> = [];
 
@@ -1824,6 +1844,12 @@ function buildPlannerPageDrafts(
     const layout = pagePlanner.pageLayouts[pageId] ?? "Full-bleed cover";
     const note = pagePlanner.pageNotes[pageId] ?? recommendedNote;
     pages.push({
+      pageId,
+      title: "Cover handoff",
+      layout,
+      note,
+      photoCount: 1,
+      photoCaptions: [coverPhoto.caption],
       warning: note.trim().length === 0 ? "Add a cover note before handoff." : null,
     });
   }
@@ -1839,6 +1865,12 @@ function buildPlannerPageDrafts(
     const layout = pagePlanner.pageLayouts[pageId] ?? recommendedLayout;
     const note = pagePlanner.pageNotes[pageId] ?? recommendedNote;
     pages.push({
+      pageId,
+      title: `Spread ${index / 2 + 1}`,
+      layout,
+      note,
+      photoCount: pagePhotos.length,
+      photoCaptions: pagePhotos.map((photo) => photo.caption),
       warning: getPageWarning(layout, pagePhotos.length, note),
     });
   }
