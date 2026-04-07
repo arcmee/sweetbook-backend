@@ -479,7 +479,17 @@ export function buildOrderReviewSummary(
 ): OrderEntrySnapshot["reviewSummary"] {
   return {
     draftPageCount: input.pagePreview.length,
-    flaggedDraftPageCount: 0,
+    flaggedDraftPageCount: countFlaggedDraftPages(input.pagePreview),
     ownerApprovalRequired: !input.ownerApproved,
   };
+}
+
+function countFlaggedDraftPages(pagePreview: CandidateReviewSnapshot["pagePreview"]): number {
+  return pagePreview.filter((page, index) => {
+    if (index === 0) {
+      return page.photoCaptions.length !== 1;
+    }
+
+    return page.photoCaptions.length === 0 || page.photoCaptions.length > 2;
+  }).length;
 }
