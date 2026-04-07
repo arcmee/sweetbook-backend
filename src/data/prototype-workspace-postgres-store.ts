@@ -38,6 +38,7 @@ type EventRow = {
   voting_starts_at: string;
   voting_ends_at: string;
   voting_closed_manually: boolean;
+  owner_approved: boolean;
   photo_count: string;
 };
 
@@ -125,6 +126,7 @@ export async function initializePrototypeWorkspaceStore(
       voting_starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       voting_ends_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
       voting_closed_manually BOOLEAN NOT NULL DEFAULT FALSE,
+      owner_approved BOOLEAN NOT NULL DEFAULT FALSE,
       photo_count INTEGER NOT NULL DEFAULT 0,
       occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -140,6 +142,9 @@ export async function initializePrototypeWorkspaceStore(
   );
   await pool.query(
     "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS voting_closed_manually BOOLEAN NOT NULL DEFAULT FALSE",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_events ADD COLUMN IF NOT EXISTS owner_approved BOOLEAN NOT NULL DEFAULT FALSE",
   );
 
   await pool.query(`
@@ -270,6 +275,7 @@ export async function seedPrototypeWorkspaceStore(
         voting_starts_at,
         voting_ends_at,
         voting_closed_manually,
+        owner_approved,
         photo_count
       )
       VALUES
@@ -282,6 +288,7 @@ export async function seedPrototypeWorkspaceStore(
           '2026-04-01T09:00:00.000Z',
           '2026-04-14T09:00:00.000Z',
           FALSE,
+          FALSE,
           124
         ),
         (
@@ -292,6 +299,7 @@ export async function seedPrototypeWorkspaceStore(
           'Prepare the holiday trip highlights before the cousins voting window opens.',
           '2026-04-20T09:00:00.000Z',
           '2026-04-30T09:00:00.000Z',
+          FALSE,
           FALSE,
           36
         )
@@ -502,6 +510,7 @@ export function createPrototypeWorkspaceSnapshotLoader(
           e.voting_starts_at::text,
           e.voting_ends_at::text,
           e.voting_closed_manually,
+          e.owner_approved,
           e.photo_count::text
         FROM prototype_events e
         INNER JOIN prototype_groups g
@@ -582,6 +591,7 @@ export function createPrototypeWorkspaceSnapshotLoader(
       id: row.id,
       name: row.name,
       groupName: row.group_name,
+      ownerApproved: row.owner_approved,
       description: row.description,
       photoCount: Number.parseInt(row.photo_count, 10),
     }));
@@ -641,7 +651,10 @@ export function createPrototypeWorkspaceSnapshotLoader(
       ),
     );
     const orderEntries = candidateReviews.map((review) =>
-      buildOrderEntrySnapshot(review),
+      buildOrderEntrySnapshot(
+        review,
+        events.find((event) => event.id === review.activeEventId),
+      ),
     );
     const groupMembers: GroupMemberSnapshot[] = groupMembersResult.rows.map((row) => ({
       groupId: row.group_id,
@@ -777,9 +790,10 @@ export function createPrototypeEventCreator(
           voting_starts_at,
           voting_ends_at,
           voting_closed_manually,
+          owner_approved,
           photo_count
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, 0)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE, 0)
       `,
       [
         nextEventId,
@@ -903,6 +917,31 @@ export function createPrototypeEventVotingExtender(
       `,
       [eventId, votingEndsAtDate.toISOString(), nextStatus],
     );
+  };
+}
+
+export function createPrototypeEventOwnerApprovalUpdater(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; ownerApproved: boolean }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+
+    if (!eventId) {
+      throw new Error("Prototype event id is required");
+    }
+
+    const result = await pool.query(
+      `
+        UPDATE prototype_events
+        SET owner_approved = $2
+        WHERE id = $1
+      `,
+      [eventId, input.ownerApproved],
+    );
+
+    if ((result as { rowCount?: number }).rowCount === 0) {
+      throw new Error("Prototype event was not found");
+    }
   };
 }
 
@@ -1458,7 +1497,10 @@ function buildCandidateReviewSnapshot(
   };
 }
 
-function buildOrderEntrySnapshot(review: CandidateReviewSnapshot): OrderEntrySnapshot {
+function buildOrderEntrySnapshot(
+  review: CandidateReviewSnapshot,
+  event?: Pick<EventCardSnapshot, "ownerApproved">,
+): OrderEntrySnapshot {
   const payloadSections =
     review.candidates.length > 0
       ? ["selected photos", "page preview", "event title"]
@@ -1469,7 +1511,10 @@ function buildOrderEntrySnapshot(review: CandidateReviewSnapshot): OrderEntrySna
     activeEventName: review.activeEventName,
     selectedCandidateCount: review.candidates.length,
     operationSummary: buildOrderOperationSummary(review),
-    readinessSummary: buildOrderReadinessSummary(review),
+    readinessSummary: buildOrderReadinessSummary({
+      candidates: review.candidates,
+      ownerApproved: event?.ownerApproved,
+    }),
     handoffSummary: {
       bookFormat: "Hardcover square",
       payloadSections,

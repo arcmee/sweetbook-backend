@@ -102,6 +102,7 @@ describe("prototype workspace endpoint", () => {
     expect(payload.workspace.groups[0]?.name).toBe("Han family");
     expect(payload.photoWorkflows[0]?.activeEventName).toBe("First birthday album");
     expect(payload.workspace.events[0]?.operationSummary.label).toBe("Voting in progress");
+    expect(payload.workspace.events[0]?.ownerApproved).toBe(false);
     expect(payload.candidateReviews[0]?.candidates[0]?.rank).toBe(1);
     expect(payload.orderEntries[0]?.operationSummary.stage).toBe("ready_for_handoff");
     expect(payload.orderEntries[0]?.readinessSummary.minimumSelectedPhotoCount).toBe(3);
@@ -373,6 +374,26 @@ describe("prototype workspace endpoint", () => {
     expect(extender).toHaveBeenCalledWith({
       eventId: "event-birthday",
       votingEndsAt: "2026-04-21T09:00:00.000Z",
+    });
+  });
+
+  it("delegates the prototype owner approval endpoint to the injected updater", async () => {
+    const updater = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeEventOwnerApprovalUpdater: updater,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/owner-approval",
+      payload: {
+        ownerApproved: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updater).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      ownerApproved: true,
     });
   });
 
