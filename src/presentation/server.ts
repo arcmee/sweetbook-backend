@@ -2,6 +2,12 @@ import { join } from "node:path";
 
 import { createPrototypeSweetBookEstimateRunner } from "../application/prototype-sweetbook-estimate";
 import { createPrototypeSweetBookSubmitRunner } from "../application/prototype-sweetbook-estimate";
+import {
+  createPrototypeAuthUserPostgresStore,
+  createPrototypeUserSearch,
+  initializePrototypeAuthUserStore,
+  seedPrototypeAuthUserStore,
+} from "../data/prototype-auth-user-postgres-store";
 import { resolveDatabaseConfig } from "../data/database-config";
 import { loadLocalEnv } from "../data/local-env-loader";
 import { createPostgresPool } from "../data/postgres-pool";
@@ -24,7 +30,6 @@ import {
   createPrototypePhotoCreator,
   createPrototypePhotoUploader,
   createPrototypePhotoLikeAdder,
-  createPrototypeUserSearch,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
   seedPrototypeWorkspaceStore,
@@ -43,6 +48,7 @@ async function main(): Promise<void> {
   const prototypeSweetBookEstimateRunner = createConfiguredEstimateRunner(persistence);
   const prototypeSweetBookSubmitRunner = createConfiguredSubmitRunner(persistence);
   const app = await buildApp({
+    prototypeAuthUserStore: persistence?.prototypeAuthUserStore,
     prototypeEventCreator: persistence?.prototypeEventCreator,
     prototypeEventVotingCloser: persistence?.prototypeEventVotingCloser,
     prototypeEventVotingExtender: persistence?.prototypeEventVotingExtender,
@@ -79,12 +85,15 @@ async function createConfiguredPersistence() {
 
   const databaseConfig = resolveDatabaseConfig(process.env);
   const pool = createPostgresPool(databaseConfig);
+  await initializePrototypeAuthUserStore(pool);
+  await seedPrototypeAuthUserStore(pool);
   await initializePrototypeWorkspaceStore(pool);
   await seedPrototypeWorkspaceStore(pool);
   const uploadDirectory =
     process.env.PROTOTYPE_UPLOAD_DIR ?? join(process.cwd(), "var", "prototype-uploads");
 
   return {
+    prototypeAuthUserStore: createPrototypeAuthUserPostgresStore(pool),
     prototypeEventCreator: createPrototypeEventCreator(pool),
     prototypeEventVotingCloser: createPrototypeEventVotingCloser(pool),
     prototypeEventVotingExtender: createPrototypeEventVotingExtender(pool),
@@ -105,7 +114,7 @@ async function createConfiguredPersistence() {
     }),
     prototypePhotoAssetLoader: createPrototypePhotoAssetLoader(pool),
     prototypePhotoLikeAdder: createPrototypePhotoLikeAdder(pool),
-    prototypeUserSearch: createPrototypeUserSearch(),
+    prototypeUserSearch: createPrototypeUserSearch(pool),
     prototypeWorkspaceSnapshotLoader: createPrototypeWorkspaceSnapshotLoader(pool),
   };
 }

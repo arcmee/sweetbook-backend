@@ -41,7 +41,27 @@ describe("prototype workspace endpoint", () => {
     });
   });
 
-  it("restores and clears a prototype auth session", async () => {
+  it("creates and restores a prototype auth session", async () => {
+    const app = await buildApp();
+    const signupResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/auth/signup",
+      payload: {
+        displayName: "Tester",
+        username: "tester",
+        password: "password123",
+      },
+    });
+
+    expect(signupResponse.statusCode).toBe(201);
+    expect(signupResponse.json()).toMatchObject({
+      user: {
+        username: "tester",
+      },
+    });
+  });
+
+  it("restores a prototype auth session through bearer auth", async () => {
     const app = await buildApp();
     const loginResponse = await app.inject({
       method: "POST",
@@ -220,9 +240,21 @@ describe("prototype workspace endpoint", () => {
 
   it("accepts a simple prototype password change", async () => {
     const app = await buildApp();
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/auth/login",
+      payload: {
+        username: "demo",
+        password: "sweetbook123!",
+      },
+    });
+    const session = loginResponse.json();
     const response = await app.inject({
       method: "POST",
       url: "/api/prototype/account/password",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
       payload: {
         currentPassword: "sweetbook123!",
         nextPassword: "sweetbook456!",

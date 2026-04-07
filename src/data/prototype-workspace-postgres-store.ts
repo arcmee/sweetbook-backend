@@ -22,6 +22,7 @@ import {
   loadPrototypePhotoAsset,
   savePrototypePhotoAsset,
 } from "./prototype-photo-local-file-store";
+import { loadPrototypeUserDisplayMap } from "./prototype-auth-user-postgres-store";
 
 type GroupRow = {
   id: string;
@@ -85,17 +86,6 @@ type OrderEntryRow = {
 };
 
 const PROTOTYPE_VIEWER_ID = "user-demo";
-const PROTOTYPE_USER_DIRECTORY = [
-  { userId: "user-demo", username: "demo", displayName: "SweetBook Demo User" },
-  { userId: "user-mina", username: "mina", displayName: "Mina" },
-  { userId: "user-joon", username: "joon", displayName: "Joon" },
-  { userId: "user-ara", username: "ara", displayName: "Ara" },
-  { userId: "user-soo", username: "soo", displayName: "Soo" },
-  { userId: "user-yuri", username: "yuri", displayName: "Yuri" },
-  { userId: "user-haru", username: "haru", displayName: "Haru" },
-  { userId: "user-sena", username: "sena", displayName: "Sena" },
-] as const;
-
 export async function initializePrototypeWorkspaceStore(
   pool: Pick<Pool, "query">,
 ): Promise<void> {
@@ -584,6 +574,7 @@ export function createPrototypeWorkspaceSnapshotLoader(
       `,
       [PROTOTYPE_VIEWER_ID],
     );
+    const userDisplayMap = await loadPrototypeUserDisplayMap(pool);
 
     const photoWorkflowRows = await pool.query<PhotoWorkflowRow>(
       `
@@ -715,7 +706,7 @@ export function createPrototypeWorkspaceSnapshotLoader(
     const groupMembers: GroupMemberSnapshot[] = groupMembersResult.rows.map((row) => ({
       groupId: row.group_id,
       userId: row.user_id,
-      displayName: getPrototypeDisplayName(row.user_id),
+      displayName: userDisplayMap.get(row.user_id) ?? row.user_id,
       role: row.role,
     }));
     const pendingInvitations = pendingInvitationsResult.rows.map((row) => ({
@@ -723,8 +714,8 @@ export function createPrototypeWorkspaceSnapshotLoader(
       groupId: row.group_id,
       groupName: row.group_name,
       invitedUserId: row.invited_user_id,
-      invitedUserDisplayName: getPrototypeDisplayName(row.invited_user_id),
-      invitedByDisplayName: getPrototypeDisplayName(row.invited_by_user_id),
+      invitedUserDisplayName: userDisplayMap.get(row.invited_user_id) ?? row.invited_user_id,
+      invitedByDisplayName: userDisplayMap.get(row.invited_by_user_id) ?? row.invited_by_user_id,
     }));
 
     return {
@@ -1181,24 +1172,6 @@ export function createPrototypeOrderPageNoteUpdater(
   };
 }
 
-export function createPrototypeUserSearch(): (input: {
-  query: string;
-}) => Promise<Array<{ userId: string; username: string; displayName: string }>> {
-  return async (input) => {
-    const normalizedQuery = input.query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return [];
-    }
-
-    return PROTOTYPE_USER_DIRECTORY.filter(
-      (user) =>
-        user.userId.toLowerCase().includes(normalizedQuery) ||
-        user.username.toLowerCase().includes(normalizedQuery) ||
-        user.displayName.toLowerCase().includes(normalizedQuery),
-    );
-  };
-}
-
 export function createPrototypeGroupInviteCreator(
   pool: Pick<Pool, "query">,
 ): (input: { groupId: string; userId: string }) => Promise<void> {
@@ -1210,7 +1183,16 @@ export function createPrototypeGroupInviteCreator(
       throw new Error("Prototype group invite requires group and user ids");
     }
 
-    if (!PROTOTYPE_USER_DIRECTORY.some((user) => user.userId === userId)) {
+    const userResult = await pool.query<{ id: string }>(
+      `
+        SELECT id
+        FROM prototype_users
+        WHERE id = $1
+      `,
+      [userId],
+    );
+
+    if (userResult.rows.length === 0) {
       throw new Error("Prototype user was not found");
     }
 
@@ -1954,8 +1936,3 @@ function buildSelectionReason(photo: PhotoCardSnapshot, rank: number): string {
   return `Selected because ${photo.caption} remains one of the strongest liked moments in this event.`;
 }
 
-function getPrototypeDisplayName(userId: string): string {
-  return (
-    PROTOTYPE_USER_DIRECTORY.find((user) => user.userId === userId)?.displayName ?? userId
-  );
-}

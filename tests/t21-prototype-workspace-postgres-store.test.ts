@@ -11,11 +11,11 @@ import {
   createPrototypeInvitationDecliner,
   createPrototypeGroupLeaveAction,
   createPrototypeOwnerTransfer,
-  createPrototypeUserSearch,
   createPrototypeWorkspaceSnapshotLoader,
   initializePrototypeWorkspaceStore,
   seedPrototypeWorkspaceStore,
 } from "../src/data/prototype-workspace-postgres-store";
+import { createPrototypeUserSearch } from "../src/data/prototype-auth-user-postgres-store";
 
 describe("prototype workspace postgres store", () => {
   it("initializes and seeds the prototype workspace tables", async () => {
@@ -88,6 +88,18 @@ describe("prototype workspace postgres store", () => {
             group_name: "Kim family moments",
             invited_user_id: "user-demo",
             invited_by_user_id: "user-sena",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "user-demo",
+            display_name: "SweetBook Demo User",
+          },
+          {
+            id: "user-sena",
+            display_name: "Sena",
           },
         ],
       })
@@ -324,7 +336,18 @@ describe("prototype workspace postgres store", () => {
   it("searches users and updates invitations and group memberships", async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "user-haru",
+            username: "haru",
+            display_name: "Haru",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: "user-haru" }],
+      })
       .mockResolvedValueOnce({
         rows: [],
       })
@@ -336,6 +359,10 @@ describe("prototype workspace postgres store", () => {
         ],
       })
       .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [],
+      })
+      .mockResolvedValueOnce({
         rows: [
           {
             group_id: "group-han",
@@ -343,11 +370,11 @@ describe("prototype workspace postgres store", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rowCount: 1, rows: [] })
       .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -357,7 +384,7 @@ describe("prototype workspace postgres store", () => {
       })
       .mockResolvedValueOnce({ rows: [] });
 
-    const searchUsers = createPrototypeUserSearch();
+    const searchUsers = createPrototypeUserSearch({ query });
     const inviteMember = createPrototypeGroupInviteCreator({ query });
     const acceptInvitation = createPrototypeInvitationAcceptor({ query });
     const declineInvitation = createPrototypeInvitationDecliner({ query });
@@ -391,55 +418,65 @@ describe("prototype workspace postgres store", () => {
     expect(results[0]?.displayName).toBe("Haru");
     expect(query).toHaveBeenNthCalledWith(
       1,
+      expect.stringContaining("FROM prototype_users"),
+      ["%haru%"],
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("SELECT id"),
+      ["user-haru"],
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      3,
       expect.stringContaining("SELECT role"),
       ["group-han", "user-haru"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      2,
+      4,
       expect.stringContaining("SELECT COUNT(*)::text AS count FROM prototype_group_invitations"),
     );
     expect(query).toHaveBeenNthCalledWith(
-      3,
+      5,
       expect.stringContaining("INSERT INTO prototype_group_invitations"),
-      ["invite-created-1", "group-han", "user-haru", "user-demo"],
+      ["invite-created-2", "group-han", "user-haru", "user-demo"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      4,
+      6,
       expect.stringContaining("SELECT group_id, invited_user_id"),
       ["invite-created-1"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      5,
+      7,
       expect.stringContaining("INSERT INTO prototype_group_memberships"),
       ["group-han", "user-haru"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      6,
+      8,
       expect.stringContaining("DELETE FROM prototype_group_invitations"),
       ["invite-created-1"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      7,
+      9,
       expect.stringContaining("DELETE FROM prototype_group_invitations"),
       ["invite-kim", "user-demo"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      8,
+      10,
       expect.stringContaining("SET role = 'Editor'"),
       ["group-han"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      9,
+      11,
       expect.stringContaining("SET role = 'Owner'"),
       ["group-han", "user-mina"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      10,
+      12,
       expect.stringContaining("SELECT role"),
       ["group-han", "user-demo"],
     );
     expect(query).toHaveBeenNthCalledWith(
-      11,
+      13,
       expect.stringContaining("DELETE FROM prototype_group_memberships"),
       ["group-han", "user-demo"],
     );
