@@ -107,6 +107,8 @@ describe("prototype workspace endpoint", () => {
     expect(payload.orderEntries[0]?.operationSummary.stage).toBe("ready_for_handoff");
     expect(payload.orderEntries[0]?.readinessSummary.minimumSelectedPhotoCount).toBe(3);
     expect(payload.orderEntries[0]?.readinessSummary.meetsMinimumPhotoCount).toBe(true);
+    expect(payload.orderEntries[0]?.reviewSummary.draftPageCount).toBe(2);
+    expect(payload.orderEntries[0]?.reviewSummary.ownerApprovalRequired).toBe(true);
     expect(payload.orderEntries[0]?.handoffSummary.bookFormat).toBe("Hardcover square");
   });
 

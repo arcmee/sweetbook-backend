@@ -172,6 +172,11 @@ describe("prototype workspace postgres store", () => {
         selectedPhotoCount: 2,
         meetsMinimumPhotoCount: false,
       },
+      reviewSummary: {
+        draftPageCount: 2,
+        flaggedDraftPageCount: 0,
+        ownerApprovalRequired: false,
+      },
     });
   });
 

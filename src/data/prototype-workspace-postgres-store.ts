@@ -4,6 +4,7 @@ import {
   buildEventOperationSummary,
   buildOrderOperationSummary,
   buildOrderReadinessSummary,
+  buildOrderReviewSummary,
   buildPrototypeWorkspaceSnapshot,
   getPrototypeWorkspaceSnapshot,
   type CandidateCardSnapshot,
@@ -1513,6 +1514,10 @@ function buildOrderEntrySnapshot(
     operationSummary: buildOrderOperationSummary(review),
     readinessSummary: buildOrderReadinessSummary({
       candidates: review.candidates,
+      ownerApproved: event?.ownerApproved,
+    }),
+    reviewSummary: buildOrderReviewSummary({
+      pagePreview: review.pagePreview,
       ownerApproved: event?.ownerApproved,
     }),
     handoffSummary: {
