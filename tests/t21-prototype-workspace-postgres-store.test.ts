@@ -201,7 +201,25 @@ describe("prototype workspace postgres store", () => {
   });
 
   it("updates event voting state through postgres actions", async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            voting_starts_at: "2026-04-01T09:00:00.000Z",
+            voting_ends_at: "2026-04-14T09:00:00.000Z",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            voting_starts_at: "2026-04-01T09:00:00.000Z",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
 
     const closeVoting = createPrototypeEventVotingCloser({ query });
     const extendVoting = createPrototypeEventVotingExtender({ query });
@@ -216,13 +234,23 @@ describe("prototype workspace postgres store", () => {
 
     expect(query).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("SET voting_closed_manually = TRUE"),
+      expect.stringContaining("SELECT voting_starts_at::text, voting_ends_at::text"),
       ["event-birthday"],
     );
     expect(query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining("SET"),
-      ["event-birthday", "2026-04-21T09:00:00.000Z"],
+      ["event-birthday", "ready"],
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("SELECT voting_starts_at::text"),
+      ["event-birthday"],
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining("SET"),
+      ["event-birthday", "2026-04-21T09:00:00.000Z", "collecting"],
     );
   });
 

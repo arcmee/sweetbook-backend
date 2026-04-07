@@ -813,13 +813,37 @@ export function createPrototypeEventVotingCloser(
       throw new Error("Prototype event id is required");
     }
 
-    await pool.query(
+    const eventResult = await pool.query<{
+      voting_starts_at: string;
+      voting_ends_at: string;
+    }>(
       `
-        UPDATE prototype_events
-        SET voting_closed_manually = TRUE
+        SELECT voting_starts_at::text, voting_ends_at::text
+        FROM prototype_events
         WHERE id = $1
       `,
       [eventId],
+    );
+    const event = eventResult.rows[0];
+    if (!event) {
+      throw new Error("Prototype event was not found");
+    }
+
+    const nextStatus = resolveEventStatus({
+      votingStartsAt: event.voting_starts_at,
+      votingEndsAt: event.voting_ends_at,
+      votingClosedManually: true,
+    });
+
+    await pool.query(
+      `
+        UPDATE prototype_events
+        SET
+          voting_closed_manually = TRUE,
+          status = $2
+        WHERE id = $1
+      `,
+      [eventId, nextStatus],
     );
   };
 }
@@ -844,15 +868,37 @@ export function createPrototypeEventVotingExtender(
       throw new Error("Prototype event voting end must use a valid datetime");
     }
 
+    const eventResult = await pool.query<{
+      voting_starts_at: string;
+    }>(
+      `
+        SELECT voting_starts_at::text
+        FROM prototype_events
+        WHERE id = $1
+      `,
+      [eventId],
+    );
+    const event = eventResult.rows[0];
+    if (!event) {
+      throw new Error("Prototype event was not found");
+    }
+
+    const nextStatus = resolveEventStatus({
+      votingStartsAt: event.voting_starts_at,
+      votingEndsAt: votingEndsAtDate.toISOString(),
+      votingClosedManually: false,
+    });
+
     await pool.query(
       `
         UPDATE prototype_events
         SET
           voting_ends_at = $2,
-          voting_closed_manually = FALSE
+          voting_closed_manually = FALSE,
+          status = $3
         WHERE id = $1
       `,
-      [eventId, votingEndsAtDate.toISOString()],
+      [eventId, votingEndsAtDate.toISOString(), nextStatus],
     );
   };
 }
