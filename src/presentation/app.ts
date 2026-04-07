@@ -14,7 +14,11 @@ import type {
 
 export interface BuildAppOptions {
   prototypeAuthUserStore?: PrototypeAuthUserStore;
-  prototypeGroupInviteCreator?: (input: { groupId: string; userId: string }) => Promise<void>;
+  prototypeGroupInviteCreator?: (input: {
+    groupId: string;
+    userId: string;
+    invitedByUserId: string;
+  }) => Promise<void>;
   prototypeGroupInvitationAcceptor?: (input: { invitationId: string; userId: string }) => Promise<void>;
   prototypeGroupInvitationDecliner?: (input: { invitationId: string; userId: string }) => Promise<void>;
   prototypeGroupLeaveAction?: (input: { groupId: string; userId: string }) => Promise<void>;
@@ -59,7 +63,7 @@ export interface BuildAppOptions {
     pageId: string;
     note: string;
   }) => Promise<void>;
-  prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
+  prototypeGroupCreator?: (input: { name: string; userId: string }) => Promise<void>;
   prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
   prototypePhotoUploader?: (input: {
     eventId: string;
@@ -72,7 +76,9 @@ export interface BuildAppOptions {
     photoId: string,
   ) => Promise<{ body: Uint8Array; mediaType: string } | null>;
   prototypePhotoLikeAdder?: (input: { photoId: string; userId: string }) => Promise<void>;
-  prototypeWorkspaceSnapshotLoader?: () => Promise<PrototypeWorkspaceSnapshot>;
+  prototypeWorkspaceSnapshotLoader?: (input?: {
+    viewerUserId?: string;
+  }) => Promise<PrototypeWorkspaceSnapshot>;
   prototypeSweetBookEstimateRunner?: PrototypeSweetBookEstimateRunner;
   prototypeSweetBookSubmitRunner?: PrototypeSweetBookSubmitRunner;
 }
@@ -83,6 +89,18 @@ export async function buildApp(
   const app = fastify({ logger: false });
   await app.register(multipart);
   const authService = createPrototypeAuthService(options.prototypeAuthUserStore);
+  const resolveBearerToken = (authorizationHeader?: string): string =>
+    authorizationHeader?.startsWith("Bearer ")
+      ? authorizationHeader.slice("Bearer ".length).trim()
+      : "";
+  const resolveRequestUserId = async (authorizationHeader?: string): Promise<string | null> => {
+    const token = resolveBearerToken(authorizationHeader);
+    if (!token) {
+      return null;
+    }
+    const session = await authService.getSession(token);
+    return session?.user.userId ?? null;
+  };
 
   app.get("/health", async () => {
     return { status: "ok" };
@@ -187,9 +205,12 @@ export async function buildApp(
     }
   });
 
-  app.get("/api/prototype/workspace", async () => {
+  app.get("/api/prototype/workspace", async (request) => {
     if (options.prototypeWorkspaceSnapshotLoader) {
-      return options.prototypeWorkspaceSnapshotLoader();
+      const viewerUserId = await resolveRequestUserId(request.headers.authorization);
+      return options.prototypeWorkspaceSnapshotLoader({
+        viewerUserId: viewerUserId ?? undefined,
+      });
     }
 
     return getPrototypeWorkspaceSnapshot();
@@ -223,10 +244,12 @@ export async function buildApp(
     const body = (request.body ?? {}) as {
       name?: string;
     };
+    const viewerUserId = await resolveRequestUserId(request.headers.authorization);
 
     try {
       await options.prototypeGroupCreator({
         name: body.name ?? "",
+        userId: viewerUserId ?? "user-demo",
       });
       return reply.code(201).send();
     } catch (error: unknown) {
@@ -276,11 +299,13 @@ export async function buildApp(
 
     const params = request.params as { groupId?: string };
     const body = (request.body ?? {}) as { userId?: string };
+    const viewerUserId = await resolveRequestUserId(request.headers.authorization);
 
     try {
       await options.prototypeGroupInviteCreator({
         groupId: params.groupId ?? "",
         userId: body.userId ?? "",
+        invitedByUserId: viewerUserId ?? "user-demo",
       });
       return reply.code(201).send();
     } catch (error: unknown) {

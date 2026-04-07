@@ -397,6 +397,7 @@ describe("prototype workspace postgres store", () => {
     await inviteMember({
       groupId: "group-han",
       userId: "user-haru",
+      invitedByUserId: "user-demo",
     });
     await acceptInvitation({
       invitationId: "invite-created-1",
