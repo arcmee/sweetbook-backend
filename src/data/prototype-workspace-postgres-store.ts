@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import {
   buildEventOperationSummary,
   buildOrderOperationSummary,
+  buildOrderReadinessSummary,
   buildPrototypeWorkspaceSnapshot,
   getPrototypeWorkspaceSnapshot,
   type CandidateCardSnapshot,
@@ -1468,6 +1469,7 @@ function buildOrderEntrySnapshot(review: CandidateReviewSnapshot): OrderEntrySna
     activeEventName: review.activeEventName,
     selectedCandidateCount: review.candidates.length,
     operationSummary: buildOrderOperationSummary(review),
+    readinessSummary: buildOrderReadinessSummary(review),
     handoffSummary: {
       bookFormat: "Hardcover square",
       payloadSections,

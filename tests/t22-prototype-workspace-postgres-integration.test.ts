@@ -105,6 +105,9 @@ describe("prototype workspace postgres integration", () => {
     expect(
       holidayOrderEntry?.selectedCandidateCount,
     ).toBe(holidayReview?.candidates.length);
+    expect(holidayOrderEntry?.readinessSummary.selectedPhotoCount).toBe(
+      holidayReview?.candidates.length,
+    );
     expect(holidayReview?.pagePreview[0]?.title).toBe("Cover preview");
   });
 
