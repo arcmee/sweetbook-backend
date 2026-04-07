@@ -208,6 +208,7 @@ describe("prototype workspace endpoint", () => {
     expect(response.statusCode).toBe(201);
     expect(creator).toHaveBeenCalledWith({
       name: "New family group",
+      userId: "user-demo",
     });
   });
 
@@ -303,6 +304,7 @@ describe("prototype workspace endpoint", () => {
     expect(inviteCreator).toHaveBeenCalledWith({
       groupId: "group-han",
       userId: "user-haru",
+      invitedByUserId: "user-demo",
     });
   });
 

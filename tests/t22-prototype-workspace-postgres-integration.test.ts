@@ -75,8 +75,8 @@ describe("prototype workspace postgres integration", () => {
     expect(response.statusCode).toBe(200);
 
     const payload = response.json();
-    expect(payload.workspace.groupSummary.totalGroups).toBe(3);
-    expect(payload.workspace.groupSummary.totalMembers).toBe(8);
+    expect(payload.workspace.groupSummary.totalGroups).toBe(2);
+    expect(payload.workspace.groupSummary.totalMembers).toBe(7);
     expect(payload.workspace.groups[0]?.name).toBe("Han family");
     expect(payload.workspace.events[0]?.name).toBe("First birthday album");
     expect(payload.pendingInvitations[0]?.groupName).toBe("Kim family moments");

@@ -505,25 +505,29 @@ export async function seedPrototypeWorkspaceStore(
 
 export function createPrototypeWorkspaceSnapshotLoader(
   pool: Pick<Pool, "query">,
-): () => Promise<PrototypeWorkspaceSnapshot> {
-  return async () => {
+): (input?: { viewerUserId?: string }) => Promise<PrototypeWorkspaceSnapshot> {
+  return async (input) => {
+    const viewerUserId = input?.viewerUserId?.trim() || PROTOTYPE_VIEWER_ID;
     const groupsResult = await pool.query<GroupRow>(
       `
         SELECT
           g.id,
           g.name,
-          COUNT(DISTINCT m.user_id)::text AS member_count,
-          COALESCE(MAX(CASE WHEN m.user_id = $1 THEN m.role END), 'Viewer') AS viewer_role,
+          COUNT(DISTINCT members.user_id)::text AS member_count,
+          viewer_membership.role AS viewer_role,
           COUNT(DISTINCT e.id)::text AS event_count
         FROM prototype_groups g
-        LEFT JOIN prototype_group_memberships m
-          ON m.group_id = g.id
+        INNER JOIN prototype_group_memberships viewer_membership
+          ON viewer_membership.group_id = g.id
+         AND viewer_membership.user_id = $1
+        LEFT JOIN prototype_group_memberships members
+          ON members.group_id = g.id
         LEFT JOIN prototype_events e
           ON e.group_id = g.id
-        GROUP BY g.id, g.name
+        GROUP BY g.id, g.name, viewer_membership.role
         ORDER BY g.name ASC
       `,
-      [PROTOTYPE_VIEWER_ID],
+      [viewerUserId],
     );
 
     const eventsResult = await pool.query<EventRow>(
@@ -541,22 +545,38 @@ export function createPrototypeWorkspaceSnapshotLoader(
         FROM prototype_events e
         INNER JOIN prototype_groups g
           ON g.id = e.group_id
+        INNER JOIN prototype_group_memberships viewer_membership
+          ON viewer_membership.group_id = g.id
+         AND viewer_membership.user_id = $1
         ORDER BY e.occurred_at ASC, e.title ASC
       `,
+      [viewerUserId],
     );
 
     const membershipCountResult = await pool.query<{ total_memberships: string }>(
       `
         SELECT COUNT(*)::text AS total_memberships
-        FROM prototype_group_memberships
+        FROM prototype_group_memberships memberships
+        WHERE memberships.group_id IN (
+          SELECT group_id
+          FROM prototype_group_memberships
+          WHERE user_id = $1
+        )
       `,
+      [viewerUserId],
     );
     const groupMembersResult = await pool.query<GroupMemberRow>(
       `
-        SELECT group_id, user_id, role
-        FROM prototype_group_memberships
+        SELECT memberships.group_id, memberships.user_id, memberships.role
+        FROM prototype_group_memberships memberships
+        WHERE memberships.group_id IN (
+          SELECT group_id
+          FROM prototype_group_memberships
+          WHERE user_id = $1
+        )
         ORDER BY group_id ASC, user_id ASC
       `,
+      [viewerUserId],
     );
     const pendingInvitationsResult = await pool.query<PendingInvitationRow>(
       `
@@ -572,7 +592,7 @@ export function createPrototypeWorkspaceSnapshotLoader(
         WHERE i.invited_user_id = $1
         ORDER BY i.created_at ASC, i.id ASC
       `,
-      [PROTOTYPE_VIEWER_ID],
+      [viewerUserId],
     );
     const userDisplayMap = await loadPrototypeUserDisplayMap(pool);
 
@@ -588,17 +608,24 @@ export function createPrototypeWorkspaceSnapshotLoader(
           p.caption,
           p.uploaded_by,
           p.like_count::text,
-          p.liked_by_viewer,
+          CASE WHEN viewer_likes.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS liked_by_viewer,
           p.original_file_name,
           p.media_type,
           p.storage_path
         FROM prototype_photo_workflows w
         INNER JOIN prototype_events e
           ON e.id = w.event_id
+        INNER JOIN prototype_group_memberships viewer_membership
+          ON viewer_membership.group_id = e.group_id
+         AND viewer_membership.user_id = $1
         LEFT JOIN prototype_photos p
           ON p.event_id = w.event_id
+        LEFT JOIN prototype_photo_likes viewer_likes
+          ON viewer_likes.photo_id = p.id
+         AND viewer_likes.user_id = $1
         ORDER BY e.occurred_at ASC, p.id ASC
       `,
+      [viewerUserId],
     );
     const orderEntryRows = await pool.query<OrderEntryRow>(
       `
@@ -741,11 +768,15 @@ export function createPrototypeWorkspaceSnapshotLoader(
 
 export function createPrototypeGroupCreator(
   pool: Pick<Pool, "query">,
-): (input: { name: string }) => Promise<void> {
+): (input: { name: string; userId: string }) => Promise<void> {
   return async (input) => {
     const groupName = input.name.trim();
+    const userId = input.userId.trim();
     if (!groupName) {
       throw new Error("Prototype group name is required");
+    }
+    if (!userId) {
+      throw new Error("Prototype group owner is required");
     }
 
     const result = await pool.query<{ count: string }>(
@@ -759,7 +790,7 @@ export function createPrototypeGroupCreator(
         INSERT INTO prototype_groups (id, name, owner_id)
         VALUES ($1, $2, $3)
       `,
-      [nextGroupId, groupName, PROTOTYPE_VIEWER_ID],
+      [nextGroupId, groupName, userId],
     );
 
     await pool.query(
@@ -767,7 +798,7 @@ export function createPrototypeGroupCreator(
         INSERT INTO prototype_group_memberships (group_id, user_id, role)
         VALUES ($1, $2, 'Owner')
       `,
-      [nextGroupId, PROTOTYPE_VIEWER_ID],
+      [nextGroupId, userId],
     );
   };
 }
@@ -1174,12 +1205,13 @@ export function createPrototypeOrderPageNoteUpdater(
 
 export function createPrototypeGroupInviteCreator(
   pool: Pick<Pool, "query">,
-): (input: { groupId: string; userId: string }) => Promise<void> {
+): (input: { groupId: string; userId: string; invitedByUserId: string }) => Promise<void> {
   return async (input) => {
     const groupId = input.groupId.trim();
     const userId = input.userId.trim();
+    const invitedByUserId = input.invitedByUserId.trim();
 
-    if (!groupId || !userId) {
+    if (!groupId || !userId || !invitedByUserId) {
       throw new Error("Prototype group invite requires group and user ids");
     }
 
@@ -1220,7 +1252,7 @@ export function createPrototypeGroupInviteCreator(
         VALUES ($1, $2, $3, $4)
         ON CONFLICT (group_id, invited_user_id) DO NOTHING
       `,
-      [nextInvitationId, groupId, userId, PROTOTYPE_VIEWER_ID],
+      [nextInvitationId, groupId, userId, invitedByUserId],
     );
   };
 }
