@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 
+import { mapPlannerSelectionToSweetBookPayload } from "./payload/sweetbook-payload-mapper";
 import type { PrototypeWorkspaceSnapshot } from "./prototype-workspace-snapshot";
 import type { SweetBookReadClient } from "./ports/sweetbook-read-client";
 import type {
@@ -137,24 +138,61 @@ async function preparePrototypeSweetBookOrder(
       dateRange: plannerContext?.dateRange ?? "2026.04",
       spineTitle: plannerContext?.spineTitle ?? "SweetBook Prototype",
     },
-    frontPhoto: createBmpPart("prototype-cover.bmp", 1200, 1200),
+    frontPhoto: createBmpPart(
+      plannerContext?.coverPhotoFileName ?? "prototype-cover.bmp",
+      1200,
+      1200,
+    ),
   });
 
-  const uploadedPhoto = await dependencies.writeClient.uploadPhoto({
-    bookUid: createdBook.bookUid,
-    file: createBmpPart("prototype-photo.bmp", 1200, 1200),
-  });
+  const uploadedPhotos =
+    plannerContext?.selectedPhotos.length && plannerContext.selectedPhotos.length > 0
+      ? plannerContext.selectedPhotos
+      : [
+          {
+            photoId: "prototype-photo",
+            fileName: "prototype-photo.bmp",
+            caption: "Prototype photo",
+          },
+        ];
+  const uploadedPhotoFileNames = new Map<string, string>();
+
+  for (const photo of uploadedPhotos) {
+    const uploadedPhoto = await dependencies.writeClient.uploadPhoto({
+      bookUid: createdBook.bookUid,
+      file: createBmpPart(photo.fileName, 1200, 1200),
+    });
+    uploadedPhotoFileNames.set(photo.photoId, uploadedPhoto.fileName);
+  }
 
   const contentInsertions: PrototypeSweetBookEstimateResult["contentInsertions"] =
     [];
-
+  const plannerPages =
+    plannerContext?.pages.length && plannerContext.pages.length > 0
+      ? plannerContext.pages
+      : [
+          {
+            pageId: "spread-1",
+            layout: "Single-photo spotlight",
+            note: "Prototype draft page.",
+            photoIds: [uploadedPhotos[0].photoId],
+          },
+        ];
   let lastContentResult: SweetBookContentsUploadResult | undefined;
-  for (let attempt = 1; attempt <= TARGET_PAGE_COUNT; attempt += 1) {
+  let attempt = 0;
+
+  for (const page of plannerPages) {
+    attempt += 1;
     const contentResult = await dependencies.writeClient.uploadContents({
       bookUid: createdBook.bookUid,
       templateUid: CONTENT_TEMPLATE_UID,
       breakBefore: "page",
-      parameters: createContentParameters(uploadedPhoto.fileName),
+      parameters: createContentParameters({
+        eventTitle: plannerContext?.spineTitle ?? "SweetBook Prototype",
+        dateRange: plannerContext?.dateRange ?? "2026.04",
+        page,
+        uploadedPhotoFileNames,
+      }),
     });
 
     contentInsertions.push({
@@ -166,6 +204,30 @@ async function preparePrototypeSweetBookOrder(
     if ((contentResult.pageCount ?? 0) >= TARGET_PAGE_COUNT) {
       break;
     }
+  }
+
+  while ((lastContentResult?.pageCount ?? 0) < TARGET_PAGE_COUNT) {
+    attempt += 1;
+    const fallbackPage =
+      plannerPages[Math.min(plannerPages.length - 1, Math.max(0, attempt - 2))] ??
+      plannerPages[0];
+    const contentResult = await dependencies.writeClient.uploadContents({
+      bookUid: createdBook.bookUid,
+      templateUid: CONTENT_TEMPLATE_UID,
+      breakBefore: "page",
+      parameters: createContentParameters({
+        eventTitle: plannerContext?.spineTitle ?? "SweetBook Prototype",
+        dateRange: plannerContext?.dateRange ?? "2026.04",
+        page: fallbackPage,
+        uploadedPhotoFileNames,
+      }),
+    });
+
+    contentInsertions.push({
+      attempt,
+      ...contentResult,
+    });
+    lastContentResult = contentResult;
   }
 
   const pageCount = lastContentResult?.pageCount ?? 0;
@@ -190,7 +252,8 @@ async function preparePrototypeSweetBookOrder(
 
   return {
     bookUid: createdBook.bookUid,
-    uploadedPhotoFileName: uploadedPhoto.fileName,
+    uploadedPhotoFileName:
+      uploadedPhotoFileNames.get(uploadedPhotos[0].photoId) ?? uploadedPhotos[0].fileName,
     pageCount,
     contentInsertions,
     estimate,
@@ -205,6 +268,18 @@ async function resolvePlannerContext(
       bookTitle: string;
       spineTitle: string;
       dateRange: string;
+      coverPhotoFileName?: string;
+      selectedPhotos: Array<{
+        photoId: string;
+        fileName: string;
+        caption: string;
+      }>;
+      pages: Array<{
+        pageId: string;
+        layout: string;
+        note: string;
+        photoIds: string[];
+      }>;
     }
   | undefined
 > {
@@ -215,8 +290,9 @@ async function resolvePlannerContext(
   const snapshot = await workspaceSnapshotLoader();
   const event = snapshot.workspace.events.find((item) => item.id === eventId);
   const orderEntry = snapshot.orderEntries.find((item) => item.activeEventId === eventId);
+  const photoWorkflow = snapshot.photoWorkflows.find((item) => item.activeEventId === eventId);
 
-  if (!event || !orderEntry) {
+  if (!event || !orderEntry || !photoWorkflow) {
     return undefined;
   }
 
@@ -229,10 +305,37 @@ async function resolvePlannerContext(
     ? "04"
     : `${parsedDate.getUTCMonth() + 1}`.padStart(2, "0");
 
+  const payload = mapPlannerSelectionToSweetBookPayload({
+    albumTitle: `${event.name} SweetBook Draft`,
+    selection: {
+      selectedPhotos: orderEntry.pagePlanner.selectedPhotoIds
+        .map((photoId) => photoWorkflow.photos.find((photo) => photo.id === photoId))
+        .filter((photo): photo is NonNullable<typeof photoWorkflow.photos[number]> => Boolean(photo))
+        .map((photo) => ({
+          photoId: photo.id,
+          caption: photo.caption,
+          assetFileName: photo.assetFileName,
+        })),
+      coverPhotoId: orderEntry.pagePlanner.coverPhotoId,
+      pageLayouts: orderEntry.pagePlanner.pageLayouts,
+      pageNotes: orderEntry.pagePlanner.pageNotes,
+    },
+  });
+
   return {
-    bookTitle: `${event.name} SweetBook Draft`,
+    bookTitle: payload.albumTitle,
     spineTitle: event.name,
     dateRange: `${year}.${month}`,
+    coverPhotoFileName: sanitizePlannerFileName(
+      payload.selectedPhotos.find((photo) => photo.photoId === payload.coverPhotoId)?.assetFileName,
+      payload.coverPhotoId ?? "prototype-cover",
+    ),
+    selectedPhotos: payload.selectedPhotos.map((photo) => ({
+      photoId: photo.photoId,
+      caption: photo.caption,
+      fileName: sanitizePlannerFileName(photo.assetFileName, photo.photoId),
+    })),
+    pages: payload.pages,
   };
 }
 
@@ -252,11 +355,26 @@ function createBmpPart(fileName: string, width: number, height: number) {
   };
 }
 
-function createContentParameters(photoFileName: string) {
+function createContentParameters(input: {
+  eventTitle: string;
+  dateRange: string;
+  page: {
+    pageId: string;
+    layout: string;
+    note: string;
+    photoIds: string[];
+  };
+  uploadedPhotoFileNames: Map<string, string>;
+}) {
+  const [year, month = "01"] = input.dateRange.split(".");
+  const photoFileNames = input.page.photoIds
+    .map((photoId) => input.uploadedPhotoFileNames.get(photoId))
+    .filter((value): value is string => Boolean(value));
+
   return {
-    year: "2026",
-    month: "04",
-    bookTitle: "SweetBook Prototype",
+    year,
+    month,
+    bookTitle: input.eventTitle,
     date: "06",
     weatherLabelX: 0,
     weatherValueX: 0,
@@ -267,10 +385,15 @@ function createContentParameters(photoFileName: string) {
     pointColor: "#FF6F61",
     hasParentComment: false,
     hasTeacherComment: false,
-    parentComment: "",
-    teacherComment: "",
-    photos: [photoFileName],
+    parentComment: input.page.note,
+    teacherComment: `${input.page.layout} | ${input.page.pageId}`,
+    photos: photoFileNames.length > 0 ? photoFileNames : ["prototype-photo.bmp"],
   };
+}
+
+function sanitizePlannerFileName(assetFileName: string | undefined, fallbackId: string): string {
+  const baseName = assetFileName?.trim() || `${fallbackId}.bmp`;
+  return baseName.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
 function createPrototypeShippingAddress(): SweetBookShippingAddressInput {

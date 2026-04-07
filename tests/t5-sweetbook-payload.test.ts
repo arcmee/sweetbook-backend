@@ -41,6 +41,56 @@ describe("T5 SweetBook payload and API adapter", () => {
     });
   });
 
+  it("maps persisted planner selection into a SweetBook handoff payload", async () => {
+    const { mapPlannerSelectionToSweetBookPayload } = await import(
+      "../src/application/payload/sweetbook-payload-mapper"
+    );
+
+    const payload = mapPlannerSelectionToSweetBookPayload({
+      albumTitle: "First birthday album SweetBook Draft",
+      selection: {
+        selectedPhotos: [
+          { photoId: "photo-cake", caption: "Cake table setup", assetFileName: "cake.png" },
+          { photoId: "photo-family", caption: "Family portrait", assetFileName: "family.png" },
+          { photoId: "photo-gift", caption: "Gift opening moment", assetFileName: "gift.png" }
+        ],
+        coverPhotoId: "photo-family",
+        pageLayouts: {
+          cover: "Full-bleed cover",
+          "spread-1": "Balanced two-photo spread"
+        },
+        pageNotes: {
+          cover: "Lead with the family portrait on the cover.",
+          "spread-1": "Balance the milestone moment with reactions."
+        }
+      }
+    });
+
+    expect(payload).toEqual({
+      albumTitle: "First birthday album SweetBook Draft",
+      coverPhotoId: "photo-family",
+      selectedPhotos: [
+        { photoId: "photo-cake", caption: "Cake table setup", assetFileName: "cake.png" },
+        { photoId: "photo-family", caption: "Family portrait", assetFileName: "family.png" },
+        { photoId: "photo-gift", caption: "Gift opening moment", assetFileName: "gift.png" }
+      ],
+      pages: [
+        {
+          pageId: "cover",
+          layout: "Full-bleed cover",
+          note: "Lead with the family portrait on the cover.",
+          photoIds: ["photo-family"]
+        },
+        {
+          pageId: "spread-1",
+          layout: "Balanced two-photo spread",
+          note: "Balance the milestone moment with reactions.",
+          photoIds: ["photo-cake", "photo-gift"]
+        }
+      ]
+    });
+  });
+
   it("exposes SweetBook client adapter boundaries for book creation, finalization, estimate, and order submission", async () => {
     const module = await import("../src/application/ports/sweetbook-client");
 
