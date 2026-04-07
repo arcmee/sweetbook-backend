@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresPool } from "../src/data/postgres-pool";
 import {
+  initializePrototypeAuthUserStore,
+  seedPrototypeAuthUserStore,
+} from "../src/data/prototype-auth-user-postgres-store";
+import {
   createPrototypeEventCreator,
   createPrototypeEventOwnerApprovalUpdater,
   createPrototypeEventVotingCloser,
@@ -23,7 +27,9 @@ describe("prototype workspace postgres integration", () => {
 
   beforeAll(async () => {
     try {
+      await initializePrototypeAuthUserStore(pool);
       await initializePrototypeWorkspaceStore(pool);
+      await pool.query("DELETE FROM prototype_users");
       await pool.query("DELETE FROM prototype_photo_likes");
       await pool.query("DELETE FROM prototype_photos");
       await pool.query("DELETE FROM prototype_photo_workflows");
@@ -31,6 +37,7 @@ describe("prototype workspace postgres integration", () => {
       await pool.query("DELETE FROM prototype_group_invitations");
       await pool.query("DELETE FROM prototype_group_memberships");
       await pool.query("DELETE FROM prototype_groups");
+      await seedPrototypeAuthUserStore(pool);
       await seedPrototypeWorkspaceStore(pool);
     } catch {
       databaseReady = false;
@@ -39,6 +46,7 @@ describe("prototype workspace postgres integration", () => {
 
   afterAll(async () => {
     if (databaseReady) {
+      await pool.query("DELETE FROM prototype_users");
       await pool.query("DELETE FROM prototype_photo_likes");
       await pool.query("DELETE FROM prototype_photos");
       await pool.query("DELETE FROM prototype_photo_workflows");

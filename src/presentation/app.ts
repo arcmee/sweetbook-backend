@@ -2,6 +2,7 @@ import multipart from "@fastify/multipart";
 import fastify, { type FastifyInstance } from "fastify";
 
 import { createPrototypeAuthService } from "../application/auth/prototype-auth-service";
+import type { PrototypeAuthUserStore } from "../application/auth/prototype-auth-user-store";
 import {
   getPrototypeWorkspaceSnapshot,
   type PrototypeWorkspaceSnapshot,
@@ -12,6 +13,7 @@ import type {
 } from "../application/prototype-sweetbook-estimate";
 
 export interface BuildAppOptions {
+  prototypeAuthUserStore?: PrototypeAuthUserStore;
   prototypeGroupInviteCreator?: (input: { groupId: string; userId: string }) => Promise<void>;
   prototypeGroupInvitationAcceptor?: (input: { invitationId: string; userId: string }) => Promise<void>;
   prototypeGroupInvitationDecliner?: (input: { invitationId: string; userId: string }) => Promise<void>;
@@ -80,7 +82,7 @@ export async function buildApp(
 ): Promise<FastifyInstance> {
   const app = fastify({ logger: false });
   await app.register(multipart);
-  const authService = createPrototypeAuthService();
+  const authService = createPrototypeAuthService(options.prototypeAuthUserStore);
 
   app.get("/health", async () => {
     return { status: "ok" };
@@ -102,6 +104,28 @@ export async function buildApp(
     } catch {
       return reply.code(401).send({
         message: "Invalid prototype credentials",
+      });
+    }
+  });
+
+  app.post("/api/prototype/auth/signup", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      displayName?: string;
+      username?: string;
+      password?: string;
+    };
+
+    try {
+      const session = await authService.signup({
+        displayName: body.displayName ?? "",
+        username: body.username ?? "",
+        password: body.password ?? "",
+      });
+
+      return reply.code(201).send(session);
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
       });
     }
   });
@@ -140,24 +164,27 @@ export async function buildApp(
   });
 
   app.post("/api/prototype/account/password", async (request, reply) => {
+    const authorizationHeader = request.headers.authorization;
     const body = (request.body ?? {}) as {
       currentPassword?: string;
       nextPassword?: string;
     };
+    const token = authorizationHeader?.startsWith("Bearer ")
+      ? authorizationHeader.slice("Bearer ".length).trim()
+      : "";
 
-    if ((body.currentPassword ?? "") !== "sweetbook123!") {
+    try {
+      await authService.changePassword({
+        token,
+        currentPassword: body.currentPassword ?? "",
+        nextPassword: body.nextPassword ?? "",
+      });
+      return reply.code(204).send();
+    } catch (error: unknown) {
       return reply.code(400).send({
-        message: "Current prototype password is incorrect",
+        message: error instanceof Error ? error.message : String(error),
       });
     }
-
-    if ((body.nextPassword ?? "").trim().length < 8) {
-      return reply.code(400).send({
-        message: "Next prototype password must be at least 8 characters",
-      });
-    }
-
-    return reply.code(204).send();
   });
 
   app.get("/api/prototype/workspace", async () => {
