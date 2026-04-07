@@ -41,6 +41,24 @@ export interface BuildAppOptions {
     eventId: string;
     ownerApproved: boolean;
   }) => Promise<void>;
+  prototypeOrderSelectionUpdater?: (input: {
+    eventId: string;
+    selectedPhotoIds: string[];
+  }) => Promise<void>;
+  prototypeOrderCoverUpdater?: (input: {
+    eventId: string;
+    coverPhotoId: string;
+  }) => Promise<void>;
+  prototypeOrderPageLayoutUpdater?: (input: {
+    eventId: string;
+    pageId: string;
+    layout: string;
+  }) => Promise<void>;
+  prototypeOrderPageNoteUpdater?: (input: {
+    eventId: string;
+    pageId: string;
+    note: string;
+  }) => Promise<void>;
   prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
   prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
   prototypePhotoUploader?: (input: {
@@ -408,6 +426,100 @@ export async function buildApp(
       await options.prototypeEventOwnerApprovalUpdater({
         eventId: params.eventId ?? "",
         ownerApproved: Boolean(body.ownerApproved),
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/page-plan/selection", async (request, reply) => {
+    if (!options.prototypeOrderSelectionUpdater) {
+      return reply.code(503).send({
+        message: "Prototype order selection updater is not configured",
+      });
+    }
+
+    const params = request.params as { eventId?: string };
+    const body = (request.body ?? {}) as { selectedPhotoIds?: string[] };
+
+    try {
+      await options.prototypeOrderSelectionUpdater({
+        eventId: params.eventId ?? "",
+        selectedPhotoIds: Array.isArray(body.selectedPhotoIds) ? body.selectedPhotoIds : [],
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/page-plan/cover", async (request, reply) => {
+    if (!options.prototypeOrderCoverUpdater) {
+      return reply.code(503).send({
+        message: "Prototype order cover updater is not configured",
+      });
+    }
+
+    const params = request.params as { eventId?: string };
+    const body = (request.body ?? {}) as { coverPhotoId?: string };
+
+    try {
+      await options.prototypeOrderCoverUpdater({
+        eventId: params.eventId ?? "",
+        coverPhotoId: body.coverPhotoId ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/page-plan/pages/:pageId/layout", async (request, reply) => {
+    if (!options.prototypeOrderPageLayoutUpdater) {
+      return reply.code(503).send({
+        message: "Prototype order page layout updater is not configured",
+      });
+    }
+
+    const params = request.params as { eventId?: string; pageId?: string };
+    const body = (request.body ?? {}) as { layout?: string };
+
+    try {
+      await options.prototypeOrderPageLayoutUpdater({
+        eventId: params.eventId ?? "",
+        pageId: params.pageId ?? "",
+        layout: body.layout ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/page-plan/pages/:pageId/note", async (request, reply) => {
+    if (!options.prototypeOrderPageNoteUpdater) {
+      return reply.code(503).send({
+        message: "Prototype order page note updater is not configured",
+      });
+    }
+
+    const params = request.params as { eventId?: string; pageId?: string };
+    const body = (request.body ?? {}) as { note?: string };
+
+    try {
+      await options.prototypeOrderPageNoteUpdater({
+        eventId: params.eventId ?? "",
+        pageId: params.pageId ?? "",
+        note: body.note ?? "",
       });
       return reply.code(200).send();
     } catch (error: unknown) {
