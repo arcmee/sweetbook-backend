@@ -82,6 +82,12 @@ export type OrderEntrySnapshot = {
   activeEventId: string;
   activeEventName: string;
   selectedCandidateCount: number;
+  pagePlanner: {
+    selectedPhotoIds: string[];
+    coverPhotoId?: string;
+    pageLayouts: Record<string, string>;
+    pageNotes: Record<string, string>;
+  };
   operationSummary: {
     stage: "blocked" | "ready_for_handoff";
     label: string;
@@ -361,6 +367,18 @@ const prototypeInteractionSnapshot = {
       activeEventId: "event-birthday",
       activeEventName: "First birthday album",
       selectedCandidateCount: 3,
+      pagePlanner: {
+        selectedPhotoIds: ["photo-cake", "photo-family", "photo-gift"],
+        coverPhotoId: "photo-cake",
+        pageLayouts: {
+          cover: "Full-bleed cover",
+          "spread-1": "Balanced two-photo spread",
+        },
+        pageNotes: {
+          cover: "Lead with the strongest event-defining moment on the cover.",
+          "spread-1": "Use this spread to balance detail shots with group moments.",
+        },
+      },
       operationSummary: {
         stage: "ready_for_handoff",
         label: "Ready for handoff prep",
@@ -434,9 +452,11 @@ export function buildEventOperationSummary(
 }
 
 export function buildOrderOperationSummary(
-  review: Pick<CandidateReviewSnapshot, "candidates">,
+  input: {
+    selectedPhotoCount: number;
+  },
 ): OrderEntrySnapshot["operationSummary"] {
-  if (review.candidates.length > 0) {
+  if (input.selectedPhotoCount > 0) {
     return {
       stage: "ready_for_handoff",
       label: "Ready for handoff prep",
@@ -452,12 +472,13 @@ export function buildOrderOperationSummary(
 }
 
 export function buildOrderReadinessSummary(
-  input: Pick<CandidateReviewSnapshot, "candidates"> & {
+  input: {
+    selectedPhotoCount: number;
     ownerApproved?: boolean;
   },
 ): OrderEntrySnapshot["readinessSummary"] {
   const minimumSelectedPhotoCount = 3;
-  const selectedPhotoCount = input.candidates.length;
+  const selectedPhotoCount = input.selectedPhotoCount;
   const meetsMinimumPhotoCount = selectedPhotoCount >= minimumSelectedPhotoCount;
 
   return {
@@ -473,23 +494,15 @@ export function buildOrderReadinessSummary(
 }
 
 export function buildOrderReviewSummary(
-  input: Pick<CandidateReviewSnapshot, "pagePreview"> & {
+  input: {
+    draftPageCount: number;
+    flaggedDraftPageCount: number;
     ownerApproved?: boolean;
   },
 ): OrderEntrySnapshot["reviewSummary"] {
   return {
-    draftPageCount: input.pagePreview.length,
-    flaggedDraftPageCount: countFlaggedDraftPages(input.pagePreview),
+    draftPageCount: input.draftPageCount,
+    flaggedDraftPageCount: input.flaggedDraftPageCount,
     ownerApprovalRequired: !input.ownerApproved,
   };
-}
-
-function countFlaggedDraftPages(pagePreview: CandidateReviewSnapshot["pagePreview"]): number {
-  return pagePreview.filter((page, index) => {
-    if (index === 0) {
-      return page.photoCaptions.length !== 1;
-    }
-
-    return page.photoCaptions.length === 0 || page.photoCaptions.length > 2;
-  }).length;
 }

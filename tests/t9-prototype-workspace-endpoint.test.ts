@@ -399,6 +399,71 @@ describe("prototype workspace endpoint", () => {
     });
   });
 
+  it("delegates the prototype page plan update endpoints to the injected actions", async () => {
+    const updateSelection = vi.fn().mockResolvedValue(undefined);
+    const updateCover = vi.fn().mockResolvedValue(undefined);
+    const updateLayout = vi.fn().mockResolvedValue(undefined);
+    const updateNote = vi.fn().mockResolvedValue(undefined);
+    const app = await buildApp({
+      prototypeOrderSelectionUpdater: updateSelection,
+      prototypeOrderCoverUpdater: updateCover,
+      prototypeOrderPageLayoutUpdater: updateLayout,
+      prototypeOrderPageNoteUpdater: updateNote,
+    });
+
+    const selectionResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/page-plan/selection",
+      payload: {
+        selectedPhotoIds: ["photo-cake", "photo-family"],
+      },
+    });
+    const coverResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/page-plan/cover",
+      payload: {
+        coverPhotoId: "photo-family",
+      },
+    });
+    const layoutResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/page-plan/pages/spread-1/layout",
+      payload: {
+        layout: "Collage spread",
+      },
+    });
+    const noteResponse = await app.inject({
+      method: "POST",
+      url: "/api/prototype/events/event-birthday/page-plan/pages/spread-1/note",
+      payload: {
+        note: "Use the candid moments here.",
+      },
+    });
+
+    expect(selectionResponse.statusCode).toBe(200);
+    expect(coverResponse.statusCode).toBe(200);
+    expect(layoutResponse.statusCode).toBe(200);
+    expect(noteResponse.statusCode).toBe(200);
+    expect(updateSelection).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      selectedPhotoIds: ["photo-cake", "photo-family"],
+    });
+    expect(updateCover).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      coverPhotoId: "photo-family",
+    });
+    expect(updateLayout).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      pageId: "spread-1",
+      layout: "Collage spread",
+    });
+    expect(updateNote).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+      pageId: "spread-1",
+      note: "Use the candid moments here.",
+    });
+  });
+
   it("delegates the prototype photo creation endpoint to the injected creator", async () => {
     const creator = vi.fn().mockResolvedValue(undefined);
     const app = await buildApp({

@@ -73,6 +73,17 @@ type PhotoWorkflowRow = {
   storage_path: string | null;
 };
 
+type OrderEntryRow = {
+  event_id: string;
+  selected_candidate_count: string;
+  book_format: string;
+  note: string;
+  selected_photo_ids_json: string | null;
+  cover_photo_id: string | null;
+  page_layouts_json: string | null;
+  page_notes_json: string | null;
+};
+
 const PROTOTYPE_VIEWER_ID = "user-demo";
 const PROTOTYPE_USER_DIRECTORY = [
   { userId: "user-demo", username: "demo", displayName: "SweetBook Demo User" },
@@ -213,9 +224,25 @@ export async function initializePrototypeWorkspaceStore(
       event_id TEXT PRIMARY KEY REFERENCES prototype_events(id) ON DELETE CASCADE,
       selected_candidate_count INTEGER NOT NULL DEFAULT 0,
       book_format TEXT NOT NULL,
-      note TEXT NOT NULL
+      note TEXT NOT NULL,
+      selected_photo_ids_json TEXT NOT NULL DEFAULT '[]',
+      cover_photo_id TEXT,
+      page_layouts_json TEXT NOT NULL DEFAULT '{}',
+      page_notes_json TEXT NOT NULL DEFAULT '{}'
     )
   `);
+  await pool.query(
+    "ALTER TABLE prototype_order_entries ADD COLUMN IF NOT EXISTS selected_photo_ids_json TEXT NOT NULL DEFAULT '[]'",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_order_entries ADD COLUMN IF NOT EXISTS cover_photo_id TEXT",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_order_entries ADD COLUMN IF NOT EXISTS page_layouts_json TEXT NOT NULL DEFAULT '{}'",
+  );
+  await pool.query(
+    "ALTER TABLE prototype_order_entries ADD COLUMN IF NOT EXISTS page_notes_json TEXT NOT NULL DEFAULT '{}'",
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS prototype_order_entry_sections (
@@ -448,9 +475,13 @@ export async function seedPrototypeWorkspaceStore(
           event_id,
           selected_candidate_count,
           book_format,
-          note
+          note,
+          selected_photo_ids_json,
+          cover_photo_id,
+          page_layouts_json,
+          page_notes_json
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (event_id) DO NOTHING
       `,
       [
@@ -458,6 +489,10 @@ export async function seedPrototypeWorkspaceStore(
         orderEntry.selectedCandidateCount,
         orderEntry.handoffSummary.bookFormat,
         orderEntry.handoffSummary.note,
+        JSON.stringify(orderEntry.pagePlanner.selectedPhotoIds),
+        orderEntry.pagePlanner.coverPhotoId ?? null,
+        JSON.stringify(orderEntry.pagePlanner.pageLayouts),
+        JSON.stringify(orderEntry.pagePlanner.pageNotes),
       ],
     );
 
@@ -574,6 +609,21 @@ export function createPrototypeWorkspaceSnapshotLoader(
         ORDER BY e.occurred_at ASC, p.id ASC
       `,
     );
+    const orderEntryRows = await pool.query<OrderEntryRow>(
+      `
+        SELECT
+          event_id,
+          selected_candidate_count::text,
+          book_format,
+          note,
+          selected_photo_ids_json,
+          cover_photo_id,
+          page_layouts_json,
+          page_notes_json
+        FROM prototype_order_entries
+        ORDER BY event_id ASC
+      `,
+    );
 
     const groups: GroupCardSnapshot[] = groupsResult.rows.map((row) => ({
       id: row.id,
@@ -598,6 +648,9 @@ export function createPrototypeWorkspaceSnapshotLoader(
     }));
 
     const photoWorkflowMap = new Map<string, PhotoWorkflowSnapshot>();
+    const orderEntryRowMap = new Map<string, OrderEntryRow>(
+      orderEntryRows.rows.map((row) => [row.event_id, row]),
+    );
     for (const row of photoWorkflowRows.rows) {
       const existing = photoWorkflowMap.get(row.active_event_id);
       if (!existing) {
@@ -655,6 +708,8 @@ export function createPrototypeWorkspaceSnapshotLoader(
       buildOrderEntrySnapshot(
         review,
         events.find((event) => event.id === review.activeEventId),
+        photoWorkflowMap.get(review.activeEventId)?.photos ?? [],
+        orderEntryRowMap.get(review.activeEventId),
       ),
     );
     const groupMembers: GroupMemberSnapshot[] = groupMembersResult.rows.map((row) => ({
@@ -819,6 +874,27 @@ export function createPrototypeEventCreator(
       `,
       [nextEventId],
     );
+
+    await pool.query(
+      `
+        INSERT INTO prototype_order_entries (
+          event_id,
+          selected_candidate_count,
+          book_format,
+          note,
+          selected_photo_ids_json,
+          cover_photo_id,
+          page_layouts_json,
+          page_notes_json
+        )
+        VALUES ($1, 0, $2, $3, '[]', NULL, '{}', '{}')
+      `,
+      [
+        nextEventId,
+        "Hardcover square",
+        "Add more liked photos to prepare a stronger SweetBook handoff.",
+      ],
+    );
   };
 }
 
@@ -943,6 +1019,165 @@ export function createPrototypeEventOwnerApprovalUpdater(
     if ((result as { rowCount?: number }).rowCount === 0) {
       throw new Error("Prototype event was not found");
     }
+  };
+}
+
+export function createPrototypeOrderSelectionUpdater(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; selectedPhotoIds: string[] }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    if (!eventId) {
+      throw new Error("Prototype event id is required");
+    }
+
+    const selectedPhotoIds = [...new Set(input.selectedPhotoIds.map((id) => id.trim()).filter(Boolean))];
+    const currentResult = await pool.query<{ cover_photo_id: string | null }>(
+      `
+        SELECT cover_photo_id
+        FROM prototype_order_entries
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+    const currentCoverPhotoId = currentResult.rows[0]?.cover_photo_id ?? null;
+    const nextCoverPhotoId =
+      currentCoverPhotoId && selectedPhotoIds.includes(currentCoverPhotoId)
+        ? currentCoverPhotoId
+        : (selectedPhotoIds[0] ?? null);
+
+    await pool.query(
+      `
+        INSERT INTO prototype_order_entries (
+          event_id,
+          selected_candidate_count,
+          book_format,
+          note,
+          selected_photo_ids_json,
+          cover_photo_id,
+          page_layouts_json,
+          page_notes_json
+        )
+        VALUES ($1, $2, 'Hardcover square', $3, $4, $5, '{}', '{}')
+        ON CONFLICT (event_id) DO UPDATE
+        SET
+          selected_candidate_count = EXCLUDED.selected_candidate_count,
+          selected_photo_ids_json = EXCLUDED.selected_photo_ids_json,
+          cover_photo_id = EXCLUDED.cover_photo_id
+      `,
+      [
+        eventId,
+        selectedPhotoIds.length,
+        selectedPhotoIds.length > 0
+          ? "Review this summary before backend submission is wired."
+          : "Add more liked photos to prepare a stronger SweetBook handoff.",
+        JSON.stringify(selectedPhotoIds),
+        nextCoverPhotoId,
+      ],
+    );
+  };
+}
+
+export function createPrototypeOrderCoverUpdater(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; coverPhotoId: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const coverPhotoId = input.coverPhotoId.trim();
+    if (!eventId || !coverPhotoId) {
+      throw new Error("Prototype cover update requires event and photo ids");
+    }
+
+    const result = await pool.query<{ selected_photo_ids_json: string | null }>(
+      `
+        SELECT selected_photo_ids_json
+        FROM prototype_order_entries
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+    const selectedPhotoIds = parseStringArray(result.rows[0]?.selected_photo_ids_json);
+    if (!selectedPhotoIds.includes(coverPhotoId)) {
+      throw new Error("Cover photo must already be selected for the draft");
+    }
+
+    await pool.query(
+      `
+        UPDATE prototype_order_entries
+        SET cover_photo_id = $2
+        WHERE event_id = $1
+      `,
+      [eventId, coverPhotoId],
+    );
+  };
+}
+
+export function createPrototypeOrderPageLayoutUpdater(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; pageId: string; layout: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const pageId = input.pageId.trim();
+    const layout = input.layout.trim();
+    if (!eventId || !pageId || !layout) {
+      throw new Error("Prototype page layout update requires event, page, and layout");
+    }
+
+    const result = await pool.query<{ page_layouts_json: string | null }>(
+      `
+        SELECT page_layouts_json
+        FROM prototype_order_entries
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+    const nextLayouts = {
+      ...parseStringRecord(result.rows[0]?.page_layouts_json),
+      [pageId]: layout,
+    };
+
+    await pool.query(
+      `
+        UPDATE prototype_order_entries
+        SET page_layouts_json = $2
+        WHERE event_id = $1
+      `,
+      [eventId, JSON.stringify(nextLayouts)],
+    );
+  };
+}
+
+export function createPrototypeOrderPageNoteUpdater(
+  pool: Pick<Pool, "query">,
+): (input: { eventId: string; pageId: string; note: string }) => Promise<void> {
+  return async (input) => {
+    const eventId = input.eventId.trim();
+    const pageId = input.pageId.trim();
+    if (!eventId || !pageId) {
+      throw new Error("Prototype page note update requires event and page ids");
+    }
+
+    const result = await pool.query<{ page_notes_json: string | null }>(
+      `
+        SELECT page_notes_json
+        FROM prototype_order_entries
+        WHERE event_id = $1
+      `,
+      [eventId],
+    );
+    const nextNotes = {
+      ...parseStringRecord(result.rows[0]?.page_notes_json),
+      [pageId]: input.note,
+    };
+
+    await pool.query(
+      `
+        UPDATE prototype_order_entries
+        SET page_notes_json = $2
+        WHERE event_id = $1
+      `,
+      [eventId, JSON.stringify(nextNotes)],
+    );
   };
 }
 
@@ -1501,34 +1736,178 @@ function buildCandidateReviewSnapshot(
 function buildOrderEntrySnapshot(
   review: CandidateReviewSnapshot,
   event?: Pick<EventCardSnapshot, "ownerApproved">,
+  photos: PhotoCardSnapshot[] = [],
+  persistedOrderEntry?: OrderEntryRow,
 ): OrderEntrySnapshot {
+  const pagePlanner = buildPagePlannerSnapshot(review, photos, persistedOrderEntry);
+  const pageDrafts = buildPlannerPageDrafts(photos, pagePlanner);
+  const selectedPhotoCount = pagePlanner.selectedPhotoIds.length;
   const payloadSections =
-    review.candidates.length > 0
+    selectedPhotoCount > 0
       ? ["selected photos", "page preview", "event title"]
       : ["event title"];
 
   return {
     activeEventId: review.activeEventId,
     activeEventName: review.activeEventName,
-    selectedCandidateCount: review.candidates.length,
-    operationSummary: buildOrderOperationSummary(review),
+    selectedCandidateCount: selectedPhotoCount,
+    pagePlanner,
+    operationSummary: buildOrderOperationSummary({
+      selectedPhotoCount,
+    }),
     readinessSummary: buildOrderReadinessSummary({
-      candidates: review.candidates,
+      selectedPhotoCount,
       ownerApproved: event?.ownerApproved,
     }),
     reviewSummary: buildOrderReviewSummary({
-      pagePreview: review.pagePreview,
+      draftPageCount: pageDrafts.length,
+      flaggedDraftPageCount: pageDrafts.filter((page) => page.warning).length,
       ownerApproved: event?.ownerApproved,
     }),
     handoffSummary: {
-      bookFormat: "Hardcover square",
+      bookFormat: persistedOrderEntry?.book_format ?? "Hardcover square",
       payloadSections,
       note:
-        review.candidates.length > 0
+        persistedOrderEntry?.note ??
+        (selectedPhotoCount > 0
           ? "Review this summary before backend submission is wired."
-          : "Add more liked photos to prepare a stronger SweetBook handoff.",
+          : "Add more liked photos to prepare a stronger SweetBook handoff."),
     },
   };
+}
+
+function buildPagePlannerSnapshot(
+  review: CandidateReviewSnapshot,
+  photos: PhotoCardSnapshot[],
+  persistedOrderEntry?: OrderEntryRow,
+): OrderEntrySnapshot["pagePlanner"] {
+  const availablePhotoIds = new Set(photos.map((photo) => photo.id));
+  const fallbackSelectedPhotoIds = review.candidates.map((candidate) => candidate.photoId);
+  const persistedSelectedPhotoIds = parseStringArray(
+    persistedOrderEntry?.selected_photo_ids_json,
+  ).filter((photoId) => availablePhotoIds.has(photoId));
+  const selectedPhotoIds =
+    persistedSelectedPhotoIds.length > 0 ? persistedSelectedPhotoIds : fallbackSelectedPhotoIds;
+  const coverPhotoId =
+    persistedOrderEntry?.cover_photo_id && selectedPhotoIds.includes(persistedOrderEntry.cover_photo_id)
+      ? persistedOrderEntry.cover_photo_id
+      : (selectedPhotoIds[0] ?? undefined);
+
+  return {
+    selectedPhotoIds,
+    coverPhotoId,
+    pageLayouts: parseStringRecord(persistedOrderEntry?.page_layouts_json),
+    pageNotes: parseStringRecord(persistedOrderEntry?.page_notes_json),
+  };
+}
+
+function buildPlannerPageDrafts(
+  photos: PhotoCardSnapshot[],
+  pagePlanner: OrderEntrySnapshot["pagePlanner"],
+): Array<{
+  warning: string | null;
+}> {
+  const selectedPhotos = pagePlanner.selectedPhotoIds
+    .map((photoId) => photos.find((photo) => photo.id === photoId))
+    .filter((photo): photo is PhotoCardSnapshot => Boolean(photo));
+  const coverPhoto =
+    selectedPhotos.find((photo) => photo.id === pagePlanner.coverPhotoId) ?? selectedPhotos[0];
+  const spreadPhotos = selectedPhotos.filter((photo) => photo.id !== coverPhoto?.id);
+  const pages: Array<{
+    warning: string | null;
+  }> = [];
+
+  if (coverPhoto) {
+    const pageId = "cover";
+    const recommendedNote =
+      "Lead with the strongest event-defining moment on the cover.";
+    const layout = pagePlanner.pageLayouts[pageId] ?? "Full-bleed cover";
+    const note = pagePlanner.pageNotes[pageId] ?? recommendedNote;
+    pages.push({
+      warning: note.trim().length === 0 ? "Add a cover note before handoff." : null,
+    });
+  }
+
+  for (let index = 0; index < spreadPhotos.length; index += 2) {
+    const pageId = `spread-${index / 2 + 1}`;
+    const pagePhotos = spreadPhotos.slice(index, index + 2);
+    const recommendedLayout = getDefaultSpreadLayout(pagePhotos.length);
+    const recommendedNote =
+      pagePhotos.length > 1
+        ? "Use this spread to balance detail shots with group moments."
+        : "Single-photo spread can spotlight a key memory beat.";
+    const layout = pagePlanner.pageLayouts[pageId] ?? recommendedLayout;
+    const note = pagePlanner.pageNotes[pageId] ?? recommendedNote;
+    pages.push({
+      warning: getPageWarning(layout, pagePhotos.length, note),
+    });
+  }
+
+  return pages;
+}
+
+function getDefaultSpreadLayout(photoCount: number): string {
+  return photoCount > 1 ? "Balanced two-photo spread" : "Single-photo spotlight";
+}
+
+function getPageWarning(
+  layout: string,
+  photoCount: number,
+  note: string,
+): string | null {
+  if (note.trim().length === 0) {
+    return "Add an edit note before sending this page to SweetBook.";
+  }
+
+  if (layout === "Single-photo spotlight" && photoCount > 1) {
+    return "Single-photo spotlight works best with one photo.";
+  }
+
+  if (layout === "Balanced two-photo spread" && photoCount < 2) {
+    return "Balanced two-photo spread needs two photos to feel complete.";
+  }
+
+  if (layout === "Collage spread" && photoCount < 2) {
+    return "Collage spread needs at least two photos.";
+  }
+
+  return null;
+}
+
+function parseStringArray(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseStringRecord(value: string | null | undefined): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
 }
 
 function buildSelectionReason(photo: PhotoCardSnapshot, rank: number): string {

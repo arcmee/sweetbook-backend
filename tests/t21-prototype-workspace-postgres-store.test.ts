@@ -124,6 +124,26 @@ describe("prototype workspace postgres store", () => {
             storage_path: null,
           },
         ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            event_id: "event-birthday",
+            selected_candidate_count: "2",
+            book_format: "Hardcover square",
+            note: "Review this summary before backend submission is wired.",
+            selected_photo_ids_json: JSON.stringify(["photo-cake", "photo-family"]),
+            cover_photo_id: "photo-cake",
+            page_layouts_json: JSON.stringify({
+              cover: "Full-bleed cover",
+              "spread-1": "Single-photo spotlight",
+            }),
+            page_notes_json: JSON.stringify({
+              cover: "Lead with the strongest event-defining moment on the cover.",
+              "spread-1": "",
+            }),
+          },
+        ],
       });
 
     const loadSnapshot = createPrototypeWorkspaceSnapshotLoader({ query });
@@ -174,8 +194,12 @@ describe("prototype workspace postgres store", () => {
       },
       reviewSummary: {
         draftPageCount: 2,
-        flaggedDraftPageCount: 0,
+        flaggedDraftPageCount: 1,
         ownerApprovalRequired: false,
+      },
+      pagePlanner: {
+        selectedPhotoIds: ["photo-cake", "photo-family"],
+        coverPhotoId: "photo-cake",
       },
     });
   });
