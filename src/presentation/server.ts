@@ -4,10 +4,6 @@ import { createPrototypeSweetBookEstimateRunner } from "../application/prototype
 import { createPrototypeSweetBookSubmitRunner } from "../application/prototype-sweetbook-estimate";
 import { resolveDatabaseConfig } from "../data/database-config";
 import { loadLocalEnv } from "../data/local-env-loader";
-import {
-  createPrototypeAuthSessionPostgresStore,
-  initializePrototypeAuthSessionStore,
-} from "../data/prototype-auth-session-postgres-store";
 import { createPostgresPool } from "../data/postgres-pool";
 import {
   createPrototypeEventCreator,
@@ -43,11 +39,10 @@ const DEFAULT_PORT = 3000;
 async function main(): Promise<void> {
   loadLocalEnv();
 
-  const prototypeSweetBookEstimateRunner = createConfiguredEstimateRunner();
-  const prototypeSweetBookSubmitRunner = createConfiguredSubmitRunner();
   const persistence = await createConfiguredPersistence();
+  const prototypeSweetBookEstimateRunner = createConfiguredEstimateRunner(persistence);
+  const prototypeSweetBookSubmitRunner = createConfiguredSubmitRunner(persistence);
   const app = await buildApp({
-    prototypeAuthSessionStore: persistence?.prototypeAuthSessionStore,
     prototypeEventCreator: persistence?.prototypeEventCreator,
     prototypeEventVotingCloser: persistence?.prototypeEventVotingCloser,
     prototypeEventVotingExtender: persistence?.prototypeEventVotingExtender,
@@ -84,14 +79,12 @@ async function createConfiguredPersistence() {
 
   const databaseConfig = resolveDatabaseConfig(process.env);
   const pool = createPostgresPool(databaseConfig);
-  await initializePrototypeAuthSessionStore(pool);
   await initializePrototypeWorkspaceStore(pool);
   await seedPrototypeWorkspaceStore(pool);
   const uploadDirectory =
     process.env.PROTOTYPE_UPLOAD_DIR ?? join(process.cwd(), "var", "prototype-uploads");
 
   return {
-    prototypeAuthSessionStore: createPrototypeAuthSessionPostgresStore(pool),
     prototypeEventCreator: createPrototypeEventCreator(pool),
     prototypeEventVotingCloser: createPrototypeEventVotingCloser(pool),
     prototypeEventVotingExtender: createPrototypeEventVotingExtender(pool),
@@ -117,7 +110,9 @@ async function createConfiguredPersistence() {
   };
 }
 
-function createConfiguredEstimateRunner() {
+function createConfiguredEstimateRunner(
+  persistence: Awaited<ReturnType<typeof createConfiguredPersistence>>,
+) {
   if (!process.env.SWEETBOOK_API_KEY) {
     return undefined;
   }
@@ -133,7 +128,9 @@ function createConfiguredEstimateRunner() {
   });
 }
 
-function createConfiguredSubmitRunner() {
+function createConfiguredSubmitRunner(
+  persistence: Awaited<ReturnType<typeof createConfiguredPersistence>>,
+) {
   if (!process.env.SWEETBOOK_API_KEY) {
     return undefined;
   }

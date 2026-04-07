@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
-
-import type { PrototypeAuthSessionStore } from "./prototype-auth-session-store";
+import { createPrototypeJwtService } from "./prototype-jwt";
 
 export interface PrototypeAuthUser {
   userId: string;
@@ -30,34 +28,11 @@ const DEMO_ACCOUNT = {
   },
 } as const;
 
-const sessions = new Map<string, PrototypeAuthUser>();
-
-class InMemoryPrototypeAuthSessionStore implements PrototypeAuthSessionStore {
-  async saveSession(session: PrototypeAuthSession): Promise<void> {
-    sessions.set(session.token, session.user);
-  }
-
-  async findSession(token: string): Promise<PrototypeAuthSession | null> {
-    const user = sessions.get(token);
-
-    if (!user) {
-      return null;
-    }
-
-    return {
-      token,
-      user,
-    };
-  }
-
-  async deleteSession(token: string): Promise<void> {
-    sessions.delete(token);
-  }
-}
-
 export function createPrototypeAuthService(
-  sessionStore: PrototypeAuthSessionStore = new InMemoryPrototypeAuthSessionStore(),
+  secret = process.env.PROTOTYPE_AUTH_JWT_SECRET ?? "groupictures-prototype-jwt-secret",
 ) {
+  const jwtService = createPrototypeJwtService(secret);
+
   return {
     async login(input: PrototypeAuthLoginInput): Promise<PrototypeAuthSession> {
       if (
@@ -67,22 +42,29 @@ export function createPrototypeAuthService(
         throw new Error("Invalid prototype credentials");
       }
 
-      const token = `ptok_${randomUUID()}`;
+      const token = jwtService.signToken(DEMO_ACCOUNT.user);
       const session = {
         token,
         user: DEMO_ACCOUNT.user,
       };
-      await sessionStore.saveSession(session);
 
       return session;
     },
 
     async getSession(token: string): Promise<PrototypeAuthSession | null> {
-      return sessionStore.findSession(token);
+      const user = jwtService.verifyToken(token);
+      if (!user) {
+        return null;
+      }
+
+      return {
+        token,
+        user,
+      };
     },
 
-    async logout(token: string): Promise<void> {
-      await sessionStore.deleteSession(token);
+    async logout(): Promise<void> {
+      return Promise.resolve();
     },
   };
 }

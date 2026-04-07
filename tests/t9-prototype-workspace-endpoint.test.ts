@@ -16,7 +16,7 @@ describe("prototype workspace endpoint", () => {
 
     expect(loginResponse.statusCode).toBe(200);
     expect(loginResponse.json()).toMatchObject({
-      token: expect.stringContaining("ptok_"),
+      token: expect.stringMatching(/^[^.]+\.[^.]+\.[^.]+$/),
       user: {
         userId: "user-demo",
         username: "demo",
@@ -55,7 +55,10 @@ describe("prototype workspace endpoint", () => {
 
     const sessionResponse = await app.inject({
       method: "GET",
-      url: `/api/prototype/auth/session?token=${session.token}`,
+      url: "/api/prototype/auth/session",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
     });
 
     expect(sessionResponse.statusCode).toBe(200);
@@ -69,21 +72,24 @@ describe("prototype workspace endpoint", () => {
     const logoutResponse = await app.inject({
       method: "POST",
       url: "/api/prototype/auth/logout",
-      payload: {
-        token: session.token,
-      },
     });
 
     expect(logoutResponse.statusCode).toBe(204);
 
-    const missingSessionResponse = await app.inject({
+    const restoredSessionResponse = await app.inject({
       method: "GET",
-      url: `/api/prototype/auth/session?token=${session.token}`,
+      url: "/api/prototype/auth/session",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
     });
 
-    expect(missingSessionResponse.statusCode).toBe(401);
-    expect(missingSessionResponse.json()).toEqual({
-      message: "Prototype auth session was not found",
+    expect(restoredSessionResponse.statusCode).toBe(200);
+    expect(restoredSessionResponse.json()).toMatchObject({
+      token: session.token,
+      user: {
+        username: "demo",
+      },
     });
   });
 
