@@ -133,6 +133,10 @@ describe("prototype workspace postgres store", () => {
     expect(snapshot.workspace.events[0]).toMatchObject({
       name: "First birthday album",
       photoCount: 124,
+      operationSummary: {
+        stage: "setup",
+        label: "Setup in progress",
+      },
     });
     expect(snapshot.groupMembers?.[0]).toMatchObject({
       groupId: "group-han",
@@ -153,6 +157,10 @@ describe("prototype workspace postgres store", () => {
     expect(snapshot.orderEntries[0]).toMatchObject({
       activeEventId: "event-birthday",
       selectedCandidateCount: 2,
+      operationSummary: {
+        stage: "ready_for_handoff",
+        label: "Ready for handoff prep",
+      },
     });
   });
 

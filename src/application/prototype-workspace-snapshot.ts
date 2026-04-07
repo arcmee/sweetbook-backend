@@ -11,6 +11,11 @@ export type EventCardSnapshot = {
   name: string;
   groupName: string;
   status: "draft" | "collecting" | "ready";
+  operationSummary: {
+    stage: "setup" | "voting" | "owner_review";
+    label: string;
+    detail: string;
+  };
   description?: string;
   votingStartsAt?: string;
   votingEndsAt?: string;
@@ -76,6 +81,11 @@ export type OrderEntrySnapshot = {
   activeEventId: string;
   activeEventName: string;
   selectedCandidateCount: number;
+  operationSummary: {
+    stage: "blocked" | "ready_for_handoff";
+    label: string;
+    detail: string;
+  };
   handoffSummary: {
     bookFormat: string;
     payloadSections: string[];
@@ -135,6 +145,11 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "First birthday album",
       groupName: "Han family",
       status: "collecting",
+      operationSummary: {
+        stage: "voting",
+        label: "Voting in progress",
+        detail: "Collecting likes before the owner review opens.",
+      },
       description: "Collect the best first birthday moments before the family vote closes.",
       votingStartsAt: "2026-04-01T09:00:00.000Z",
       votingEndsAt: "2026-04-14T09:00:00.000Z",
@@ -148,6 +163,11 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "Winter holiday trip",
       groupName: "Park cousins",
       status: "draft",
+      operationSummary: {
+        stage: "setup",
+        label: "Setup in progress",
+        detail: "Waiting for the voting window to open and more event setup to finish.",
+      },
       description: "Prepare the holiday trip highlights before the cousins voting window opens.",
       votingStartsAt: "2026-04-20T09:00:00.000Z",
       votingEndsAt: "2026-04-30T09:00:00.000Z",
@@ -327,6 +347,11 @@ const prototypeInteractionSnapshot = {
       activeEventId: "event-birthday",
       activeEventName: "First birthday album",
       selectedCandidateCount: 3,
+      operationSummary: {
+        stage: "ready_for_handoff",
+        label: "Ready for handoff prep",
+        detail: "Owner review can continue with a draft handoff summary.",
+      },
       handoffSummary: {
         bookFormat: "Hardcover square",
         payloadSections: ["selected photos", "page preview", "event title"],
@@ -355,4 +380,48 @@ export function getPrototypeWorkspaceSnapshot(): PrototypeWorkspaceSnapshot {
 
 export function getPrototypeWorkspace(): WorkspaceSnapshot {
   return prototypeWorkspace;
+}
+
+export function buildEventOperationSummary(
+  event: Pick<EventCardSnapshot, "status" | "canVote" | "canOwnerSelectPhotos">,
+): EventCardSnapshot["operationSummary"] {
+  if (event.canOwnerSelectPhotos || event.status === "ready") {
+    return {
+      stage: "owner_review",
+      label: "Owner review ready",
+      detail: "Voting is closed and the SweetBook operation can move into owner review.",
+    };
+  }
+
+  if (event.canVote || event.status === "collecting") {
+    return {
+      stage: "voting",
+      label: "Voting in progress",
+      detail: "Collecting likes before the owner review opens.",
+    };
+  }
+
+  return {
+    stage: "setup",
+    label: "Setup in progress",
+    detail: "Waiting for the voting window to open and more event setup to finish.",
+  };
+}
+
+export function buildOrderOperationSummary(
+  review: Pick<CandidateReviewSnapshot, "candidates">,
+): OrderEntrySnapshot["operationSummary"] {
+  if (review.candidates.length > 0) {
+    return {
+      stage: "ready_for_handoff",
+      label: "Ready for handoff prep",
+      detail: "Owner review can continue with a draft handoff summary.",
+    };
+  }
+
+  return {
+    stage: "blocked",
+    label: "Blocked before handoff",
+    detail: "Add more liked photos before the SweetBook operation can continue.",
+  };
 }
