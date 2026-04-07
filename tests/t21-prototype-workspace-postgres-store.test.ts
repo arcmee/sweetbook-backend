@@ -161,6 +161,11 @@ describe("prototype workspace postgres store", () => {
         stage: "ready_for_handoff",
         label: "Ready for handoff prep",
       },
+      readinessSummary: {
+        minimumSelectedPhotoCount: 3,
+        selectedPhotoCount: 2,
+        meetsMinimumPhotoCount: false,
+      },
     });
   });
 

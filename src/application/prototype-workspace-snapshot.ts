@@ -86,6 +86,12 @@ export type OrderEntrySnapshot = {
     label: string;
     detail: string;
   };
+  readinessSummary: {
+    minimumSelectedPhotoCount: number;
+    selectedPhotoCount: number;
+    meetsMinimumPhotoCount: boolean;
+    nextSuggestedStep: string;
+  };
   handoffSummary: {
     bookFormat: string;
     payloadSections: string[];
@@ -352,6 +358,12 @@ const prototypeInteractionSnapshot = {
         label: "Ready for handoff prep",
         detail: "Owner review can continue with a draft handoff summary.",
       },
+      readinessSummary: {
+        minimumSelectedPhotoCount: 3,
+        selectedPhotoCount: 3,
+        meetsMinimumPhotoCount: true,
+        nextSuggestedStep: "Review page-level draft checks and record owner approval.",
+      },
       handoffSummary: {
         bookFormat: "Hardcover square",
         payloadSections: ["selected photos", "page preview", "event title"],
@@ -423,5 +435,22 @@ export function buildOrderOperationSummary(
     stage: "blocked",
     label: "Blocked before handoff",
     detail: "Add more liked photos before the SweetBook operation can continue.",
+  };
+}
+
+export function buildOrderReadinessSummary(
+  review: Pick<CandidateReviewSnapshot, "candidates">,
+): OrderEntrySnapshot["readinessSummary"] {
+  const minimumSelectedPhotoCount = 3;
+  const selectedPhotoCount = review.candidates.length;
+  const meetsMinimumPhotoCount = selectedPhotoCount >= minimumSelectedPhotoCount;
+
+  return {
+    minimumSelectedPhotoCount,
+    selectedPhotoCount,
+    meetsMinimumPhotoCount,
+    nextSuggestedStep: meetsMinimumPhotoCount
+      ? "Review page-level draft checks and record owner approval."
+      : `Add at least ${minimumSelectedPhotoCount} liked photos before moving into SweetBook handoff.`,
   };
 }
