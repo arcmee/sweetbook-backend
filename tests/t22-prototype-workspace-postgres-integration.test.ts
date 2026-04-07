@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool } from "../src/data/postgres-pool";
 import {
   createPrototypeEventCreator,
+  createPrototypeEventOwnerApprovalUpdater,
   createPrototypeEventVotingCloser,
   createPrototypeEventVotingExtender,
   createPrototypePhotoCreator,
@@ -137,6 +138,7 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("draft");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(false);
+    expect(createdEvent?.ownerApproved).toBe(false);
     expect(createdEvent?.operationSummary.stage).toBe("setup");
 
     if (!createdEvent?.id) {
@@ -153,7 +155,18 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("ready");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(true);
+    expect(createdEvent?.ownerApproved).toBe(false);
     expect(createdEvent?.operationSummary.stage).toBe("owner_review");
+
+    const updateOwnerApproval = createPrototypeEventOwnerApprovalUpdater(pool);
+    await updateOwnerApproval({
+      eventId: createdEvent.id,
+      ownerApproved: true,
+    });
+
+    snapshot = await loadSnapshot();
+    createdEvent = snapshot.workspace.events.find((event) => event.id === createdEvent?.id);
+    expect(createdEvent?.ownerApproved).toBe(true);
 
     await extendVoting({
       eventId: createdEvent.id,
@@ -166,6 +179,7 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("draft");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(false);
+    expect(createdEvent?.ownerApproved).toBe(true);
     expect(createdEvent?.operationSummary.stage).toBe("setup");
   });
 });

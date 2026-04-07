@@ -37,6 +37,10 @@ export interface BuildAppOptions {
     eventId: string;
     votingEndsAt: string;
   }) => Promise<void>;
+  prototypeEventOwnerApprovalUpdater?: (input: {
+    eventId: string;
+    ownerApproved: boolean;
+  }) => Promise<void>;
   prototypeGroupCreator?: (input: { name: string }) => Promise<void>;
   prototypePhotoCreator?: (input: { eventId: string; caption: string }) => Promise<void>;
   prototypePhotoUploader?: (input: {
@@ -377,6 +381,33 @@ export async function buildApp(
       await options.prototypeEventVotingExtender({
         eventId: params.eventId ?? "",
         votingEndsAt: body.votingEndsAt ?? "",
+      });
+      return reply.code(200).send();
+    } catch (error: unknown) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/prototype/events/:eventId/owner-approval", async (request, reply) => {
+    if (!options.prototypeEventOwnerApprovalUpdater) {
+      return reply.code(503).send({
+        message: "Prototype event owner approval updater is not configured",
+      });
+    }
+
+    const params = request.params as {
+      eventId?: string;
+    };
+    const body = (request.body ?? {}) as {
+      ownerApproved?: boolean;
+    };
+
+    try {
+      await options.prototypeEventOwnerApprovalUpdater({
+        eventId: params.eventId ?? "",
+        ownerApproved: Boolean(body.ownerApproved),
       });
       return reply.code(200).send();
     } catch (error: unknown) {

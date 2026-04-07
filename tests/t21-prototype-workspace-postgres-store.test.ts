@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createPrototypeEventOwnerApprovalUpdater,
   createPrototypePhotoCreator,
   createPrototypePhotoLikeAdder,
   createPrototypeEventVotingCloser,
@@ -54,7 +55,11 @@ describe("prototype workspace postgres store", () => {
             id: "event-birthday",
             name: "First birthday album",
             group_name: "Han family",
-            status: "collecting",
+            description: "Collect the best first birthday moments before the family vote closes.",
+            voting_starts_at: "2026-04-20T09:00:00.000Z",
+            voting_ends_at: "2026-04-30T09:00:00.000Z",
+            voting_closed_manually: false,
+            owner_approved: true,
             photo_count: "124",
           },
         ],
@@ -133,6 +138,7 @@ describe("prototype workspace postgres store", () => {
     expect(snapshot.workspace.events[0]).toMatchObject({
       name: "First birthday album",
       photoCount: 124,
+      ownerApproved: true,
       operationSummary: {
         stage: "setup",
         label: "Setup in progress",
@@ -264,6 +270,25 @@ describe("prototype workspace postgres store", () => {
       4,
       expect.stringContaining("SET"),
       ["event-birthday", "2026-04-21T09:00:00.000Z", "collecting"],
+    );
+  });
+
+  it("updates owner approval through postgres actions", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rowCount: 1,
+      rows: [],
+    });
+
+    const updateOwnerApproval = createPrototypeEventOwnerApprovalUpdater({ query });
+
+    await updateOwnerApproval({
+      eventId: "event-birthday",
+      ownerApproved: true,
+    });
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("SET owner_approved = $2"),
+      ["event-birthday", true],
     );
   });
 

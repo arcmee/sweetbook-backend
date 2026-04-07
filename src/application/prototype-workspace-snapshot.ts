@@ -11,6 +11,7 @@ export type EventCardSnapshot = {
   name: string;
   groupName: string;
   status: "draft" | "collecting" | "ready";
+  ownerApproved?: boolean;
   operationSummary: {
     stage: "setup" | "voting" | "owner_review";
     label: string;
@@ -151,6 +152,7 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "First birthday album",
       groupName: "Han family",
       status: "collecting",
+      ownerApproved: false,
       operationSummary: {
         stage: "voting",
         label: "Voting in progress",
@@ -169,6 +171,7 @@ const prototypeWorkspace: WorkspaceSnapshot = {
       name: "Winter holiday trip",
       groupName: "Park cousins",
       status: "draft",
+      ownerApproved: false,
       operationSummary: {
         stage: "setup",
         label: "Setup in progress",
@@ -439,18 +442,22 @@ export function buildOrderOperationSummary(
 }
 
 export function buildOrderReadinessSummary(
-  review: Pick<CandidateReviewSnapshot, "candidates">,
+  input: Pick<CandidateReviewSnapshot, "candidates"> & {
+    ownerApproved?: boolean;
+  },
 ): OrderEntrySnapshot["readinessSummary"] {
   const minimumSelectedPhotoCount = 3;
-  const selectedPhotoCount = review.candidates.length;
+  const selectedPhotoCount = input.candidates.length;
   const meetsMinimumPhotoCount = selectedPhotoCount >= minimumSelectedPhotoCount;
 
   return {
     minimumSelectedPhotoCount,
     selectedPhotoCount,
     meetsMinimumPhotoCount,
-    nextSuggestedStep: meetsMinimumPhotoCount
-      ? "Review page-level draft checks and record owner approval."
-      : `Add at least ${minimumSelectedPhotoCount} liked photos before moving into SweetBook handoff.`,
+    nextSuggestedStep: !meetsMinimumPhotoCount
+      ? `Add at least ${minimumSelectedPhotoCount} liked photos before moving into SweetBook handoff.`
+      : input.ownerApproved
+        ? "Review page-level draft checks and finalize the SweetBook handoff."
+        : "Review page-level draft checks and record owner approval.",
   };
 }
