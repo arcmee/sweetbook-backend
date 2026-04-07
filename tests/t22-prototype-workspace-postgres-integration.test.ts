@@ -134,6 +134,7 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("draft");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(false);
+    expect(createdEvent?.operationSummary.stage).toBe("setup");
 
     if (!createdEvent?.id) {
       throw new Error("Expected created event to exist");
@@ -149,6 +150,7 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("ready");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(true);
+    expect(createdEvent?.operationSummary.stage).toBe("owner_review");
 
     await extendVoting({
       eventId: createdEvent.id,
@@ -161,5 +163,6 @@ describe("prototype workspace postgres integration", () => {
     expect(createdEvent?.status).toBe("draft");
     expect(createdEvent?.canVote).toBe(false);
     expect(createdEvent?.canOwnerSelectPhotos).toBe(false);
+    expect(createdEvent?.operationSummary.stage).toBe("setup");
   });
 });

@@ -101,7 +101,9 @@ describe("prototype workspace endpoint", () => {
     expect(payload.workspace.groupSummary.totalGroups).toBe(2);
     expect(payload.workspace.groups[0]?.name).toBe("Han family");
     expect(payload.photoWorkflows[0]?.activeEventName).toBe("First birthday album");
+    expect(payload.workspace.events[0]?.operationSummary.label).toBe("Voting in progress");
     expect(payload.candidateReviews[0]?.candidates[0]?.rank).toBe(1);
+    expect(payload.orderEntries[0]?.operationSummary.stage).toBe("ready_for_handoff");
     expect(payload.orderEntries[0]?.handoffSummary.bookFormat).toBe("Hardcover square");
   });
 

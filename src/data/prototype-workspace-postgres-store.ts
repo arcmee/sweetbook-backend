@@ -1,6 +1,8 @@
 import type { Pool } from "pg";
 
 import {
+  buildEventOperationSummary,
+  buildOrderOperationSummary,
   buildPrototypeWorkspaceSnapshot,
   getPrototypeWorkspaceSnapshot,
   type CandidateCardSnapshot,
@@ -1127,16 +1129,24 @@ function buildVotingFields(input: {
   | "votingClosedManually"
   | "canVote"
   | "canOwnerSelectPhotos"
+  | "operationSummary"
 > {
   const status = resolveEventStatus(input);
+  const canVote = status === "collecting";
+  const canOwnerSelectPhotos = status === "ready";
 
   return {
     status,
     votingStartsAt: input.votingStartsAt,
     votingEndsAt: input.votingEndsAt,
     votingClosedManually: input.votingClosedManually,
-    canVote: status === "collecting",
-    canOwnerSelectPhotos: status === "ready",
+    canVote,
+    canOwnerSelectPhotos,
+    operationSummary: buildEventOperationSummary({
+      status,
+      canVote,
+      canOwnerSelectPhotos,
+    }),
   };
 }
 
@@ -1457,6 +1467,7 @@ function buildOrderEntrySnapshot(review: CandidateReviewSnapshot): OrderEntrySna
     activeEventId: review.activeEventId,
     activeEventName: review.activeEventName,
     selectedCandidateCount: review.candidates.length,
+    operationSummary: buildOrderOperationSummary(review),
     handoffSummary: {
       bookFormat: "Hardcover square",
       payloadSections,
