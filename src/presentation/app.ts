@@ -633,25 +633,35 @@ export async function buildApp(
     }
   });
 
-  app.post("/api/prototype/sweetbook/estimate", async (_, reply) => {
+  app.post("/api/prototype/sweetbook/estimate", async (request, reply) => {
     if (!options.prototypeSweetBookEstimateRunner) {
       return reply.code(503).send({
         message: "SweetBook prototype estimate runner is not configured",
       });
     }
 
-    const result = await options.prototypeSweetBookEstimateRunner();
+    const body = (request.body ?? {}) as {
+      eventId?: string;
+    };
+    const result = await options.prototypeSweetBookEstimateRunner({
+      eventId: body.eventId,
+    });
     return reply.code(200).send(result);
   });
 
-  app.post("/api/prototype/sweetbook/submit", async (_, reply) => {
+  app.post("/api/prototype/sweetbook/submit", async (request, reply) => {
     if (!options.prototypeSweetBookSubmitRunner) {
       return reply.code(503).send({
         message: "SweetBook prototype submit runner is not configured",
       });
     }
 
-    const result = await options.prototypeSweetBookSubmitRunner();
+    const body = (request.body ?? {}) as {
+      eventId?: string;
+    };
+    const result = await options.prototypeSweetBookSubmitRunner({
+      eventId: body.eventId,
+    });
     return reply.code(200).send(result);
   });
 

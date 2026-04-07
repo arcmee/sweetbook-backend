@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 
+import type { PrototypeWorkspaceSnapshot } from "./prototype-workspace-snapshot";
 import type { SweetBookReadClient } from "./ports/sweetbook-read-client";
 import type {
   SweetBookClient,
@@ -28,7 +29,7 @@ export interface PrototypeSweetBookEstimateResult {
 }
 
 export type PrototypeSweetBookEstimateRunner =
-  () => Promise<PrototypeSweetBookEstimateResult>;
+  (input?: { eventId?: string }) => Promise<PrototypeSweetBookEstimateResult>;
 
 export interface PrototypeSweetBookSubmitResult {
   status: "submitted";
@@ -45,11 +46,12 @@ export interface PrototypeSweetBookSubmitResult {
 }
 
 export type PrototypeSweetBookSubmitRunner =
-  () => Promise<PrototypeSweetBookSubmitResult>;
+  (input?: { eventId?: string }) => Promise<PrototypeSweetBookSubmitResult>;
 
 export interface PrototypeSweetBookEstimateServiceDependencies {
   readClient: SweetBookReadClient;
   writeClient: SweetBookClient;
+  workspaceSnapshotLoader?: () => Promise<PrototypeWorkspaceSnapshot>;
   now?: () => number;
 }
 
@@ -58,8 +60,8 @@ export function createPrototypeSweetBookEstimateRunner(
 ): PrototypeSweetBookEstimateRunner {
   const now = dependencies.now ?? Date.now;
 
-  return async () => {
-    const prepared = await preparePrototypeSweetBookOrder(dependencies, now);
+  return async (input) => {
+    const prepared = await preparePrototypeSweetBookOrder(dependencies, now, input);
 
     return {
       status:
@@ -80,8 +82,8 @@ export function createPrototypeSweetBookSubmitRunner(
 ): PrototypeSweetBookSubmitRunner {
   const now = dependencies.now ?? Date.now;
 
-  return async () => {
-    const prepared = await preparePrototypeSweetBookOrder(dependencies, now);
+  return async (input) => {
+    const prepared = await preparePrototypeSweetBookOrder(dependencies, now, input);
 
     if (prepared.estimate.creditSufficient === false) {
       throw new Error("SweetBook credits are insufficient for order submission");
@@ -114,9 +116,16 @@ export function createPrototypeSweetBookSubmitRunner(
 async function preparePrototypeSweetBookOrder(
   dependencies: PrototypeSweetBookEstimateServiceDependencies,
   now: () => number,
+  input?: { eventId?: string },
 ) {
+  const plannerContext = await resolvePlannerContext(
+    dependencies.workspaceSnapshotLoader,
+    input?.eventId,
+  );
   const createdBook = await dependencies.writeClient.createBook({
-    title: `SweetBook Prototype Estimate ${new Date(now()).toISOString()}`,
+    title:
+      plannerContext?.bookTitle ??
+      `SweetBook Prototype Estimate ${new Date(now()).toISOString()}`,
     bookSpecUid: BOOK_SPEC_UID,
     idempotencyKey: `prototype-estimate-book-${now()}`,
   });
@@ -125,8 +134,8 @@ async function preparePrototypeSweetBookOrder(
     bookUid: createdBook.bookUid,
     templateUid: COVER_TEMPLATE_UID,
     parameters: {
-      dateRange: "2026.04",
-      spineTitle: "SweetBook Prototype",
+      dateRange: plannerContext?.dateRange ?? "2026.04",
+      spineTitle: plannerContext?.spineTitle ?? "SweetBook Prototype",
     },
     frontPhoto: createBmpPart("prototype-cover.bmp", 1200, 1200),
   });
@@ -185,6 +194,45 @@ async function preparePrototypeSweetBookOrder(
     pageCount,
     contentInsertions,
     estimate,
+  };
+}
+
+async function resolvePlannerContext(
+  workspaceSnapshotLoader: PrototypeSweetBookEstimateServiceDependencies["workspaceSnapshotLoader"],
+  eventId: string | undefined,
+): Promise<
+  | {
+      bookTitle: string;
+      spineTitle: string;
+      dateRange: string;
+    }
+  | undefined
+> {
+  if (!workspaceSnapshotLoader || !eventId) {
+    return undefined;
+  }
+
+  const snapshot = await workspaceSnapshotLoader();
+  const event = snapshot.workspace.events.find((item) => item.id === eventId);
+  const orderEntry = snapshot.orderEntries.find((item) => item.activeEventId === eventId);
+
+  if (!event || !orderEntry) {
+    return undefined;
+  }
+
+  const eventDate = event.votingEndsAt ?? event.votingStartsAt ?? new Date().toISOString();
+  const parsedDate = new Date(eventDate);
+  const year = Number.isNaN(parsedDate.valueOf())
+    ? "2026"
+    : `${parsedDate.getUTCFullYear()}`;
+  const month = Number.isNaN(parsedDate.valueOf())
+    ? "04"
+    : `${parsedDate.getUTCMonth() + 1}`.padStart(2, "0");
+
+  return {
+    bookTitle: `${event.name} SweetBook Draft`,
+    spineTitle: event.name,
+    dateRange: `${year}.${month}`,
   };
 }
 
