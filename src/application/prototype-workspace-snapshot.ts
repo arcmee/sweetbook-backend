@@ -93,6 +93,11 @@ export type OrderEntrySnapshot = {
     meetsMinimumPhotoCount: boolean;
     nextSuggestedStep: string;
   };
+  reviewSummary: {
+    draftPageCount: number;
+    flaggedDraftPageCount: number;
+    ownerApprovalRequired: boolean;
+  };
   handoffSummary: {
     bookFormat: string;
     payloadSections: string[];
@@ -367,6 +372,11 @@ const prototypeInteractionSnapshot = {
         meetsMinimumPhotoCount: true,
         nextSuggestedStep: "Review page-level draft checks and record owner approval.",
       },
+      reviewSummary: {
+        draftPageCount: 2,
+        flaggedDraftPageCount: 0,
+        ownerApprovalRequired: true,
+      },
       handoffSummary: {
         bookFormat: "Hardcover square",
         payloadSections: ["selected photos", "page preview", "event title"],
@@ -459,5 +469,17 @@ export function buildOrderReadinessSummary(
       : input.ownerApproved
         ? "Review page-level draft checks and finalize the SweetBook handoff."
         : "Review page-level draft checks and record owner approval.",
+  };
+}
+
+export function buildOrderReviewSummary(
+  input: Pick<CandidateReviewSnapshot, "pagePreview"> & {
+    ownerApproved?: boolean;
+  },
+): OrderEntrySnapshot["reviewSummary"] {
+  return {
+    draftPageCount: input.pagePreview.length,
+    flaggedDraftPageCount: 0,
+    ownerApprovalRequired: !input.ownerApproved,
   };
 }
