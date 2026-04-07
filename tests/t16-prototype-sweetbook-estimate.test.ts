@@ -65,15 +65,86 @@ describe("prototype SweetBook estimate runner", () => {
     const runEstimate = createPrototypeSweetBookEstimateRunner({
       readClient,
       writeClient,
+      workspaceSnapshotLoader: async () => ({
+        workspace: {
+          groupSummary: { totalGroups: 1, totalMembers: 1 },
+          groups: [],
+          events: [
+            {
+              id: "event-birthday",
+              name: "First birthday album",
+              groupName: "Han family",
+              status: "ready",
+              operationSummary: {
+                stage: "owner_review",
+                label: "Owner review ready",
+                detail: "Voting is closed and the SweetBook operation can move into owner review.",
+              },
+              photoCount: 3,
+            },
+          ],
+        },
+        photoWorkflows: [],
+        candidateReviews: [],
+        orderEntries: [
+          {
+            activeEventId: "event-birthday",
+            activeEventName: "First birthday album",
+            selectedCandidateCount: 3,
+            pagePlanner: {
+              selectedPhotoIds: ["photo-cake", "photo-family", "photo-gift"],
+              coverPhotoId: "photo-cake",
+              pageLayouts: {},
+              pageNotes: {},
+            },
+            operationSummary: {
+              stage: "ready_for_handoff",
+              label: "Ready for handoff prep",
+              detail: "Owner review can continue with a draft handoff summary.",
+            },
+            readinessSummary: {
+              minimumSelectedPhotoCount: 3,
+              selectedPhotoCount: 3,
+              meetsMinimumPhotoCount: true,
+              nextSuggestedStep: "Review page-level draft checks and record owner approval.",
+            },
+            reviewSummary: {
+              draftPageCount: 2,
+              flaggedDraftPageCount: 0,
+              ownerApprovalRequired: true,
+            },
+            handoffSummary: {
+              bookFormat: "Hardcover square",
+              payloadSections: ["selected photos", "page preview", "event title"],
+              note: "Review this summary before backend submission is wired.",
+            },
+          },
+        ],
+      }),
       now: () => 1,
     });
 
-    const result = await runEstimate();
+    const result = await runEstimate({
+      eventId: "event-birthday",
+    });
 
     expect(result.status).toBe("blocked_insufficient_credit");
     expect(result.pageCount).toBe(24);
     expect(result.estimate.creditSufficient).toBe(false);
     expect(writeClient.submitOrder).not.toHaveBeenCalled();
+    expect(writeClient.createBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "First birthday album SweetBook Draft",
+      }),
+    );
+    expect(writeClient.uploadCover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          spineTitle: "First birthday album",
+          dateRange: "2026.04",
+        }),
+      }),
+    );
   });
 
   it("submits the order when estimate credits are sufficient", async () => {
@@ -134,10 +205,68 @@ describe("prototype SweetBook estimate runner", () => {
     const runSubmit = createPrototypeSweetBookSubmitRunner({
       readClient,
       writeClient,
+      workspaceSnapshotLoader: async () => ({
+        workspace: {
+          groupSummary: { totalGroups: 1, totalMembers: 1 },
+          groups: [],
+          events: [
+            {
+              id: "event-birthday",
+              name: "First birthday album",
+              groupName: "Han family",
+              status: "ready",
+              operationSummary: {
+                stage: "owner_review",
+                label: "Owner review ready",
+                detail: "Voting is closed and the SweetBook operation can move into owner review.",
+              },
+              photoCount: 3,
+            },
+          ],
+        },
+        photoWorkflows: [],
+        candidateReviews: [],
+        orderEntries: [
+          {
+            activeEventId: "event-birthday",
+            activeEventName: "First birthday album",
+            selectedCandidateCount: 3,
+            pagePlanner: {
+              selectedPhotoIds: ["photo-cake", "photo-family", "photo-gift"],
+              coverPhotoId: "photo-cake",
+              pageLayouts: {},
+              pageNotes: {},
+            },
+            operationSummary: {
+              stage: "ready_for_handoff",
+              label: "Ready for handoff prep",
+              detail: "Owner review can continue with a draft handoff summary.",
+            },
+            readinessSummary: {
+              minimumSelectedPhotoCount: 3,
+              selectedPhotoCount: 3,
+              meetsMinimumPhotoCount: true,
+              nextSuggestedStep: "Review page-level draft checks and record owner approval.",
+            },
+            reviewSummary: {
+              draftPageCount: 2,
+              flaggedDraftPageCount: 0,
+              ownerApprovalRequired: false,
+            },
+            handoffSummary: {
+              bookFormat: "Hardcover square",
+              payloadSections: ["selected photos", "page preview", "event title"],
+              note: "Review this summary before backend submission is wired.",
+            },
+          },
+        ],
+      }),
       now: () => 1,
     });
 
-    const result = await runSubmit();
+    const result = await runSubmit({
+      eventId: "event-birthday",
+    });
 
     expect(result.status).toBe("submitted");
     expect(result.order.orderUid).toBe("ord_1");

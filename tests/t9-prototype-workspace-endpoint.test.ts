@@ -500,8 +500,7 @@ describe("prototype workspace endpoint", () => {
   });
 
   it("delegates the SweetBook prototype estimate endpoint to the injected runner", async () => {
-    const app = await buildApp({
-      prototypeSweetBookEstimateRunner: async () => ({
+    const runner = vi.fn().mockResolvedValue({
         status: "blocked_insufficient_credit",
         bookUid: "bk_123",
         uploadedPhotoFileName: "photo-1.jpg",
@@ -514,14 +513,22 @@ describe("prototype workspace endpoint", () => {
           creditSufficient: false,
           currency: "KRW",
         },
-      }),
+      });
+    const app = await buildApp({
+      prototypeSweetBookEstimateRunner: runner,
     });
     const response = await app.inject({
       method: "POST",
       url: "/api/prototype/sweetbook/estimate",
+      payload: {
+        eventId: "event-birthday",
+      },
     });
 
     expect(response.statusCode).toBe(200);
+    expect(runner).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+    });
     expect(response.json()).toMatchObject({
       status: "blocked_insufficient_credit",
       bookUid: "bk_123",
@@ -543,8 +550,7 @@ describe("prototype workspace endpoint", () => {
   });
 
   it("delegates the SweetBook prototype submit endpoint to the injected runner", async () => {
-    const app = await buildApp({
-      prototypeSweetBookSubmitRunner: async () => ({
+    const runner = vi.fn().mockResolvedValue({
         status: "submitted",
         bookUid: "bk_123",
         uploadedPhotoFileName: "photo-1.jpg",
@@ -562,14 +568,22 @@ describe("prototype workspace endpoint", () => {
           orderStatus: 20,
           orderStatusDisplay: "결제완료",
         },
-      }),
+      });
+    const app = await buildApp({
+      prototypeSweetBookSubmitRunner: runner,
     });
     const response = await app.inject({
       method: "POST",
       url: "/api/prototype/sweetbook/submit",
+      payload: {
+        eventId: "event-birthday",
+      },
     });
 
     expect(response.statusCode).toBe(200);
+    expect(runner).toHaveBeenCalledWith({
+      eventId: "event-birthday",
+    });
     expect(response.json()).toMatchObject({
       status: "submitted",
       bookUid: "bk_123",

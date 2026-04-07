@@ -117,6 +117,7 @@ function createConfiguredEstimateRunner() {
   return createPrototypeSweetBookEstimateRunner({
     readClient,
     writeClient,
+    workspaceSnapshotLoader: persistence?.prototypeWorkspaceSnapshotLoader,
   });
 }
 
@@ -132,6 +133,7 @@ function createConfiguredSubmitRunner() {
   return createPrototypeSweetBookSubmitRunner({
     readClient,
     writeClient,
+    workspaceSnapshotLoader: persistence?.prototypeWorkspaceSnapshotLoader,
   });
 }
 
