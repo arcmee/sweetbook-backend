@@ -84,7 +84,43 @@ describe("prototype SweetBook estimate runner", () => {
             },
           ],
         },
-        photoWorkflows: [],
+        photoWorkflows: [
+          {
+            activeEventId: "event-birthday",
+            activeEventName: "First birthday album",
+            uploadState: {
+              pendingCount: 0,
+              uploadedCount: 3,
+              helperText: "Ready for review.",
+            },
+            photos: [
+              {
+                id: "photo-cake",
+                caption: "Cake table setup",
+                uploadedBy: "Mina",
+                likeCount: 12,
+                likedByViewer: true,
+                assetFileName: "cake.png",
+              },
+              {
+                id: "photo-family",
+                caption: "Family portrait",
+                uploadedBy: "Joon",
+                likeCount: 9,
+                likedByViewer: false,
+                assetFileName: "family.png",
+              },
+              {
+                id: "photo-gift",
+                caption: "Gift opening moment",
+                uploadedBy: "Ara",
+                likeCount: 7,
+                likedByViewer: false,
+                assetFileName: "gift.png",
+              },
+            ],
+          },
+        ],
         candidateReviews: [],
         orderEntries: [
           {
@@ -139,9 +175,24 @@ describe("prototype SweetBook estimate runner", () => {
     );
     expect(writeClient.uploadCover).toHaveBeenCalledWith(
       expect.objectContaining({
+        frontPhoto: expect.objectContaining({
+          fileName: "cake.png",
+        }),
         parameters: expect.objectContaining({
           spineTitle: "First birthday album",
           dateRange: "2026.04",
+        }),
+      }),
+    );
+    expect(writeClient.uploadPhoto).toHaveBeenCalledTimes(3);
+    expect(writeClient.uploadContents).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          bookTitle: "First birthday album",
+          parentComment: "Lead with the strongest event-defining moment on the cover.",
+          teacherComment: "Full-bleed cover | cover",
+          photos: ["photo-1.jpg"],
         }),
       }),
     );
@@ -224,7 +275,43 @@ describe("prototype SweetBook estimate runner", () => {
             },
           ],
         },
-        photoWorkflows: [],
+        photoWorkflows: [
+          {
+            activeEventId: "event-birthday",
+            activeEventName: "First birthday album",
+            uploadState: {
+              pendingCount: 0,
+              uploadedCount: 3,
+              helperText: "Ready for review.",
+            },
+            photos: [
+              {
+                id: "photo-cake",
+                caption: "Cake table setup",
+                uploadedBy: "Mina",
+                likeCount: 12,
+                likedByViewer: true,
+                assetFileName: "cake.png",
+              },
+              {
+                id: "photo-family",
+                caption: "Family portrait",
+                uploadedBy: "Joon",
+                likeCount: 9,
+                likedByViewer: false,
+                assetFileName: "family.png",
+              },
+              {
+                id: "photo-gift",
+                caption: "Gift opening moment",
+                uploadedBy: "Ara",
+                likeCount: 7,
+                likedByViewer: false,
+                assetFileName: "gift.png",
+              },
+            ],
+          },
+        ],
         candidateReviews: [],
         orderEntries: [
           {
@@ -271,5 +358,6 @@ describe("prototype SweetBook estimate runner", () => {
     expect(result.status).toBe("submitted");
     expect(result.order.orderUid).toBe("ord_1");
     expect(writeClient.submitOrder).toHaveBeenCalledTimes(1);
+    expect(writeClient.uploadPhoto).toHaveBeenCalledTimes(3);
   });
 });
