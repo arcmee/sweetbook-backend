@@ -722,10 +722,20 @@ export async function buildApp(
     const body = (request.body ?? {}) as {
       eventId?: string;
     };
-    const result = await options.prototypeSweetBookEstimateRunner({
-      eventId: body.eventId,
-    });
-    return reply.code(200).send(result);
+    try {
+      const result = await options.prototypeSweetBookEstimateRunner({
+        eventId: body.eventId,
+      });
+      return reply.code(200).send(result);
+    } catch (error: unknown) {
+      request.log.error(error, "Prototype SweetBook estimate failed");
+      return reply.code(500).send({
+        message:
+          error instanceof Error
+            ? error.message
+            : "SweetBook prototype estimate failed",
+      });
+    }
   });
 
   app.post("/api/prototype/sweetbook/submit", async (request, reply) => {
@@ -738,10 +748,20 @@ export async function buildApp(
     const body = (request.body ?? {}) as {
       eventId?: string;
     };
-    const result = await options.prototypeSweetBookSubmitRunner({
-      eventId: body.eventId,
-    });
-    return reply.code(200).send(result);
+    try {
+      const result = await options.prototypeSweetBookSubmitRunner({
+        eventId: body.eventId,
+      });
+      return reply.code(200).send(result);
+    } catch (error: unknown) {
+      request.log.error(error, "Prototype SweetBook submit failed");
+      return reply.code(500).send({
+        message:
+          error instanceof Error
+            ? error.message
+            : "SweetBook prototype submit failed",
+      });
+    }
   });
 
   return app;

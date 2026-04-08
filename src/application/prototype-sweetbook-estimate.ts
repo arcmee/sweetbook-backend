@@ -392,8 +392,9 @@ function createContentParameters(input: {
 }
 
 function sanitizePlannerFileName(assetFileName: string | undefined, fallbackId: string): string {
-  const baseName = assetFileName?.trim() || `${fallbackId}.bmp`;
-  return baseName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const baseName = (assetFileName?.trim() || fallbackId).replace(/[^a-zA-Z0-9._-]/g, "-");
+  const withoutExtension = baseName.replace(/\.[^.]+$/u, "");
+  return `${withoutExtension || fallbackId}.bmp`;
 }
 
 function createPrototypeShippingAddress(): SweetBookShippingAddressInput {
