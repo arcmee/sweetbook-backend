@@ -87,7 +87,11 @@ export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
   const app = fastify({ logger: false });
-  await app.register(multipart);
+  await app.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024,
+    },
+  });
   const authService = createPrototypeAuthService(options.prototypeAuthUserStore);
   const resolveBearerToken = (authorizationHeader?: string): string =>
     authorizationHeader?.startsWith("Bearer ")
@@ -611,20 +615,46 @@ export async function buildApp(
     }
 
     try {
-      const file = await request.file();
-      const eventId = `${file?.fields.eventId?.value ?? ""}`;
-      const caption = `${file?.fields.caption?.value ?? ""}`;
+      let uploadedFile:
+        | {
+            filename: string;
+            mimetype: string;
+            fileBytes: Buffer;
+          }
+        | undefined;
+      let eventId = "";
+      let caption = "";
 
-      if (!file) {
+      for await (const part of request.parts()) {
+        if (part.type === "file") {
+          uploadedFile = {
+            filename: part.filename,
+            mimetype: part.mimetype,
+            fileBytes: await part.toBuffer(),
+          };
+          continue;
+        }
+
+        if (part.fieldname === "eventId") {
+          eventId = `${part.value ?? ""}`;
+          continue;
+        }
+
+        if (part.fieldname === "caption") {
+          caption = `${part.value ?? ""}`;
+        }
+      }
+
+      if (!uploadedFile) {
         throw new Error("Prototype photo file is required");
       }
 
       await options.prototypePhotoUploader({
         eventId,
         caption,
-        originalFileName: file.filename,
-        mediaType: file.mimetype,
-        fileBytes: await file.toBuffer(),
+        originalFileName: uploadedFile.filename,
+        mediaType: uploadedFile.mimetype,
+        fileBytes: uploadedFile.fileBytes,
       });
       return reply.code(201).send();
     } catch (error: unknown) {

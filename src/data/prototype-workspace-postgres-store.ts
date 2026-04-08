@@ -892,7 +892,7 @@ export function createPrototypeEventCreator(
           uploaded_count,
           helper_text
         )
-        VALUES ($1, 0, 0, 'Upload queue is local-only until backend adapters land.')
+        VALUES ($1, 0, 0, '사진을 업로드하면 이 이벤트의 사진 목록에 바로 반영됩니다.')
       `,
       [nextEventId],
     );

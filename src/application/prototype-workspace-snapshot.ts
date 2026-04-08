@@ -274,7 +274,7 @@ const prototypeInteractionSnapshot = {
       uploadState: {
         pendingCount: 3,
         uploadedCount: 124,
-        helperText: "Upload queue is local-only until backend adapters land.",
+        helperText: "사진을 업로드하면 이 이벤트의 사진 목록에 바로 반영됩니다.",
       },
       photos: [
         {
@@ -315,7 +315,7 @@ const prototypeInteractionSnapshot = {
       uploadState: {
         pendingCount: 1,
         uploadedCount: 36,
-        helperText: "Upload queue is local-only until backend adapters land.",
+        helperText: "사진을 업로드하면 이 이벤트의 사진 목록에 바로 반영됩니다.",
       },
       photos: [
         {
